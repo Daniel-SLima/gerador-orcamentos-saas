@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "../lib/supabase"; // Adicionado para segurança
+import { supabase } from "../lib/supabase"; // Atenção ao caminho! Pode ser ../lib ou ../../lib dependendo da sua pasta
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -60,7 +60,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       
       {/* 1. BARRA SUPERIOR EXCLUSIVA PARA MOBILE */}
       <header className="md:hidden fixed top-0 left-0 w-full h-16 bg-white border-b border-gray-200 flex items-center justify-between px-5 z-40 shadow-sm">
-        <span className="text-xl font-bold text-blue-600 tracking-tight">SANE</span>
+        
+        {/* 🚀 LOGO MOBILE AQUI */}
+        <div className="flex items-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img 
+            src="/Logo_Sane_512x512.png" 
+            alt="SANE" 
+            className="h-8 w-auto object-contain" 
+          />
+        </div>
+
         <button 
           onClick={() => setIsMobileMenuOpen(true)} 
           className="text-gray-600 hover:text-blue-600 focus:outline-none p-2 bg-gray-50 rounded-lg"
@@ -86,7 +96,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       `}>
         
         <div className="h-16 md:h-24 flex items-center justify-between px-6 border-b border-gray-100">
-          <h1 className="text-xl md:text-2xl font-black text-blue-600 leading-tight">Orçamentos</h1>
+          {/* 🚀 LOGO DESKTOP AQUI */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img 
+            src="/Logo_Sane_512x512.png" 
+            alt="SANE" 
+            className="h-10 md:h-12 w-auto object-contain" 
+          />
           
           <button 
             onClick={() => setIsMobileMenuOpen(false)}

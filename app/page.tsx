@@ -5,7 +5,7 @@ import { supabase } from "./lib/supabase";
 import { useRouter } from "next/navigation";
 
 export default function Login() {
-  const router = useRouter(); // <-- Roteador ativado aqui!
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -22,7 +22,7 @@ export default function Login() {
       setMessage("Erro: " + error.message);
     } else {
       setMessage("Login realizado com sucesso! Redirecionando...");
-      router.push("/dashboard"); // <-- Redirecionamento mágico aqui!
+      router.push("/dashboard");
     }
     setLoading(false);
   };
@@ -44,8 +44,15 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 border border-gray-100">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">SANE Sistemas</h1>
+        
+        {/* 🚀 LOGO ADICIONADA AQUI NO LUGAR DO TEXTO */}
+        <div className="text-center mb-8 flex flex-col items-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img 
+            src="/Logo_Sane_512x512.png" 
+            alt="SANE Sistemas" 
+            className="h-16 w-auto object-contain mb-2" 
+          />
           <p className="text-sm text-gray-500 mt-2">Acesse sua conta para continuar</p>
         </div>
 
