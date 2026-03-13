@@ -21,7 +21,7 @@ export default function Login() {
     if (error) {
       setMessage("Erro: " + error.message);
     } else {
-      setMessage("✅ Login realizado com sucesso! Redirecionando...");
+      setMessage("Login realizado com sucesso! Redirecionando...");
       router.push("/dashboard"); // <-- Redirecionamento mágico aqui!
     }
     setLoading(false);
@@ -36,7 +36,7 @@ export default function Login() {
     if (error) {
       setMessage("Erro: " + error.message);
     } else {
-      setMessage("✅ Conta criada! Você já pode fazer login.");
+      setMessage("Conta criada! Você já pode fazer login.");
     }
     setLoading(false);
   };
@@ -45,7 +45,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 border border-gray-100">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">SANE</h1>
+          <h1 className="text-2xl font-bold text-gray-900">SANE Sistemas</h1>
           <p className="text-sm text-gray-500 mt-2">Acesse sua conta para continuar</p>
         </div>
 
