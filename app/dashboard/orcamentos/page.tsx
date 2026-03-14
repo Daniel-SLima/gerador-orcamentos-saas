@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { supabase } from "../../lib/supabase";
+import { useSearchParams } from "next/navigation";
 
 // --- TIPAGENS EXATAS DO SEU BANCO DE DADOS ---
 interface Cliente {
@@ -31,7 +32,22 @@ interface ItemCarrinho {
   subtotal: number;
 }
 
-export default function NovoOrcamentoPage() {
+// 🚀 NOVA INTERFACE PARA RESOLVER O ERRO DO 'ANY' NO BANCO DE DADOS
+interface ItemBanco {
+  produto_id: string;
+  descricao: string;
+  quantidade: number;
+  valor_unitario_aplicado: number;
+  medidas: string;
+  desconto: number;
+  subtotal: number;
+}
+
+function FormularioOrcamento() {
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
+  const cloneId = searchParams.get("clone");
+
   const [loadingDados, setLoadingDados] = useState(true);
   const [salvando, setSalvando] = useState(false);
 
@@ -52,10 +68,11 @@ export default function NovoOrcamentoPage() {
   const [itens, setItens] = useState<ItemCarrinho[]>([]);
 
   useEffect(() => {
-    carregarListas();
+    carregarListasEPreencher();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const carregarListas = async () => {
+  const carregarListasEPreencher = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -70,8 +87,35 @@ export default function NovoOrcamentoPage() {
       if (resVendedores.data) setVendedores(resVendedores.data);
       if (resProdutos.data) setProdutos(resProdutos.data as Produto[]);
 
+      // 🚀 LÓGICA DE PREENCHIMENTO AUTOMÁTICO (EDIT/CLONE) COM TIPAGEM CORRETA
+      const targetId = editId || cloneId;
+      if (targetId) {
+        const { data: orcData } = await supabase.from("orcamentos").select("*").eq("id", targetId).single();
+        const { data: itensData } = await supabase.from("itens_orcamento").select("*").eq("orcamento_id", targetId);
+
+        if (orcData) {
+          setClienteId(orcData.cliente_id || "");
+          setVendedorId(orcData.vendedor_id || "");
+          setObservacoes(orcData.observacoes || "");
+        }
+        
+        if (itensData) {
+          // Usando a nova interface ItemBanco no lugar de 'any'
+          const itensMontados: ItemCarrinho[] = itensData.map((i: ItemBanco) => ({
+            produto_id: i.produto_id,
+            descricao: i.descricao,
+            quantidade: i.quantidade,
+            valor_unitario: i.valor_unitario_aplicado,
+            medidas: i.medidas || "",
+            desconto: i.desconto || 0,
+            subtotal: i.subtotal
+          }));
+          setItens(itensMontados);
+        }
+      }
+
     } catch (error) {
-      console.error("Erro geral ao carregar listas:", error);
+      console.error("Erro geral ao carregar dados:", error);
     } finally {
       setLoadingDados(false);
     }
@@ -127,7 +171,7 @@ export default function NovoOrcamentoPage() {
   const totalDescontos = itens.reduce((acc, item) => acc + Number(item.desconto), 0);
   const valorTotalOrcamento = itens.reduce((acc, item) => acc + item.subtotal, 0);
 
-  const gerarOrcamentoFinal = async () => {
+  const gerarOuAtualizarOrcamento = async () => {
     if (!clienteId) return alert("Por favor, selecione um Cliente.");
     if (itens.length === 0) return alert("Adicione pelo menos um produto ao orçamento.");
 
@@ -136,23 +180,47 @@ export default function NovoOrcamentoPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado.");
 
-      const { data: orcamentoGerado, error: erroOrc } = await supabase
-        .from("orcamentos")
-        .insert([{
-          user_id: user.id,
-          cliente_id: clienteId,
-          vendedor_id: vendedorId || null,
-          valor_total: valorTotalOrcamento,
-          observacoes: observacoes,
-          status: "Rascunho"
-        }])
-        .select()
-        .single();
+      let idFinal = "";
 
-      if (erroOrc) throw erroOrc;
+      if (editId) {
+        // MODO EDIÇÃO
+        const { error: erroOrc } = await supabase
+          .from("orcamentos")
+          .update({
+            cliente_id: clienteId,
+            vendedor_id: vendedorId || null,
+            valor_total: valorTotalOrcamento,
+            observacoes: observacoes
+          })
+          .eq("id", editId)
+          .eq("user_id", user.id);
+
+        if (erroOrc) throw erroOrc;
+        idFinal = editId;
+
+        await supabase.from("itens_orcamento").delete().eq("orcamento_id", editId);
+
+      } else {
+        // MODO NOVO / CLONAR
+        const { data: orcamentoGerado, error: erroOrc } = await supabase
+          .from("orcamentos")
+          .insert([{
+            user_id: user.id,
+            cliente_id: clienteId,
+            vendedor_id: vendedorId || null,
+            valor_total: valorTotalOrcamento,
+            observacoes: observacoes,
+            status: "Rascunho"
+          }])
+          .select()
+          .single();
+
+        if (erroOrc) throw erroOrc;
+        idFinal = orcamentoGerado.id;
+      }
 
       const itensParaBanco = itens.map(item => ({
-        orcamento_id: orcamentoGerado.id,
+        orcamento_id: idFinal,
         produto_id: item.produto_id,
         user_id: user.id,
         descricao: item.descricao,
@@ -166,11 +234,11 @@ export default function NovoOrcamentoPage() {
       const { error: erroItens } = await supabase.from("itens_orcamento").insert(itensParaBanco);
       if (erroItens) throw erroItens;
 
-      window.open(`/imprimir/${orcamentoGerado.id}?action=view`, "_blank");
+      window.open(`/imprimir/${idFinal}?action=view`, "_blank");
       window.location.href = "/dashboard/historico";
 
     } catch (error) {
-      alert("Erro ao gerar orçamento: " + (error as Error).message);
+      alert("Erro ao processar orçamento: " + (error as Error).message);
       setSalvando(false);
     }
   };
@@ -184,11 +252,21 @@ export default function NovoOrcamentoPage() {
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
       
-      <div className="flex justify-between items-end">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">Novo Orçamento</h1>
-          <p className="text-gray-500 text-sm">Preencha os dados abaixo para gerar um novo documento.</p>
+      {/* 🚀 CABEÇALHO COM A LOGO NO LUGAR DO NOME */}
+      <div className="flex justify-start items-center border-b border-gray-100 pb-4 mb-8">
+        <div className="max-w-[180px]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo_sane_completa.png" alt="SANE" className="w-full h-auto object-contain" />
         </div>
+      </div>
+
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">
+          {editId ? "✏️ Editando Orçamento" : cloneId ? "📋 Duplicando Orçamento" : "Novo Orçamento"}
+        </h1>
+        <p className="text-gray-500 text-sm">
+          {editId ? "Altere os dados abaixo e clique em salvar para atualizar o PDF." : "Preencha os dados abaixo para gerar um novo documento."}
+        </p>
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-6">
@@ -220,7 +298,7 @@ export default function NovoOrcamentoPage() {
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
         <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 border-b border-gray-100 pb-2">Adicionar Produto</h2>
         
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mb-5">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mb-5 relative">
           <div className="md:col-span-6 lg:col-span-8">
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">Produto *</label>
             <select 
@@ -233,9 +311,8 @@ export default function NovoOrcamentoPage() {
             </select>
           </div>
 
-          <div className="md:col-span-6 lg:col-span-4">
+          <div className="md:col-span-6 lg:col-span-4 relative z-10">
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">Medidas / Especif.</label>
-            {/* 🚀 TROCADO PARA TEXTAREA COM RESIZE */}
             <textarea 
               rows={2}
               value={medidas} 
@@ -402,21 +479,32 @@ export default function NovoOrcamentoPage() {
 
       <div className="flex justify-end pt-4">
         <button 
-          onClick={gerarOrcamentoFinal}
+          onClick={gerarOuAtualizarOrcamento}
           disabled={salvando || itens.length === 0 || !clienteId}
-          className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 text-white font-black text-lg py-4 px-10 rounded-xl shadow-lg transition-all flex items-center justify-center gap-3"
+          className={`w-full md:w-auto text-white font-black text-lg py-4 px-10 rounded-xl shadow-lg transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:bg-gray-400 ${
+            editId ? "bg-amber-500 hover:bg-amber-600" : "bg-blue-600 hover:bg-blue-700"
+          }`}
         >
           {salvando ? (
             "Processando..."
           ) : (
             <>
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
-              Gerar PDF do Orçamento
+              {editId ? "Salvar Alterações e Ver PDF" : "Gerar PDF do Orçamento"}
             </>
           )}
         </button>
       </div>
 
     </div>
+  );
+}
+
+// 🚀 O NEXT.JS EXIGE QUE QUALQUER COMPONENTE QUE USE PARÂMETROS DA URL FIQUE DENTRO DO SUSPENSE
+export default function NovoOrcamentoPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-500">Carregando gerador...</div>}>
+      <FormularioOrcamento />
+    </Suspense>
   );
 }
