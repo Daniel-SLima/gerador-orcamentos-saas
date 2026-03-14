@@ -29,6 +29,15 @@ interface ItemBanco {
   subtotal: number;
 }
 
+// 🚀 FUNÇÃO PARA PEGAR A DATA ATUAL DO BRASIL NO FORMATO YYYY-MM-DD
+const obterDataAtualBrasil = () => {
+  const data = new Date();
+  const options = { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' } as const;
+  const dataFormatada = data.toLocaleDateString('pt-BR', options); // Retorna DD/MM/YYYY
+  const [dia, mes, ano] = dataFormatada.split('/');
+  return `${ano}-${mes}-${dia}`;
+};
+
 function FormularioOrcamento() {
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
@@ -41,6 +50,9 @@ function FormularioOrcamento() {
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
 
+  // 🚀 NOVO ESTADO: DATA DE EMISSÃO (Já começa com o dia de hoje no Brasil)
+  const [dataEmissao, setDataEmissao] = useState(obterDataAtualBrasil());
+  
   const [clienteId, setClienteId] = useState("");
   const [vendedorId, setVendedorId] = useState("");
   const [observacoes, setObservacoes] = useState("");
@@ -53,7 +65,7 @@ function FormularioOrcamento() {
 
   const [itens, setItens] = useState<ItemCarrinho[]>([]);
 
-  // 🚀 ESTADOS DO MODAL DE EDIÇÃO
+  // ESTADOS DO MODAL DE EDIÇÃO
   const [modalAberto, setModalAberto] = useState(false);
   const [indexEditando, setIndexEditando] = useState<number | null>(null);
   const [itemEditando, setItemEditando] = useState<ItemCarrinho | null>(null);
@@ -87,6 +99,11 @@ function FormularioOrcamento() {
           setClienteId(orcData.cliente_id || "");
           setVendedorId(orcData.vendedor_id || "");
           setObservacoes(orcData.observacoes || "");
+          
+          // 🚀 SE ESTIVER EDITANDO OU CLONANDO, PUXA A DATA DO BANCO
+          if (orcData.data_emissao) {
+            setDataEmissao(orcData.data_emissao.split('T')[0]);
+          }
         }
         
         if (itensData) {
@@ -150,7 +167,6 @@ function FormularioOrcamento() {
     setItens(itens.filter((_, index) => index !== indexParaRemover));
   };
 
-  // 🚀 LÓGICA DO MODAL DE EDIÇÃO
   const abrirModalEdicao = (index: number) => {
     setIndexEditando(index);
     setItemEditando({ ...itens[index] });
@@ -166,7 +182,6 @@ function FormularioOrcamento() {
   const salvarEdicao = () => {
     if (indexEditando === null || !itemEditando) return;
     
-    // Recalcula o subtotal com base nas novas edições
     const subtotalBruto = itemEditando.quantidade * itemEditando.valor_unitario;
     let subtotalLiquido = subtotalBruto - itemEditando.desconto;
     if (subtotalLiquido < 0) subtotalLiquido = 0;
@@ -183,6 +198,7 @@ function FormularioOrcamento() {
   const valorTotalOrcamento = itens.reduce((acc, item) => acc + item.subtotal, 0);
 
   const gerarOuAtualizarOrcamento = async () => {
+    if (!dataEmissao) return alert("Por favor, selecione a Data de Emissão.");
     if (!clienteId) return alert("Por favor, selecione um Cliente.");
     if (itens.length === 0) return alert("Adicione pelo menos um produto ao orçamento.");
 
@@ -193,17 +209,30 @@ function FormularioOrcamento() {
 
       let idFinal = "";
 
+      // 🚀 SALVANDO A DATA ESCOLHIDA NO BANCO DE DADOS
       if (editId) {
         const { error: erroOrc } = await supabase.from("orcamentos").update({
-          cliente_id: clienteId, vendedor_id: vendedorId || null, valor_total: valorTotalOrcamento, observacoes: observacoes
+          cliente_id: clienteId, 
+          vendedor_id: vendedorId || null, 
+          valor_total: valorTotalOrcamento, 
+          observacoes: observacoes,
+          data_emissao: dataEmissao 
         }).eq("id", editId).eq("user_id", user.id);
+        
         if (erroOrc) throw erroOrc;
         idFinal = editId;
         await supabase.from("itens_orcamento").delete().eq("orcamento_id", editId);
       } else {
         const { data: orcamentoGerado, error: erroOrc } = await supabase.from("orcamentos").insert([{
-          user_id: user.id, cliente_id: clienteId, vendedor_id: vendedorId || null, valor_total: valorTotalOrcamento, observacoes: observacoes, status: "Rascunho"
+          user_id: user.id, 
+          cliente_id: clienteId, 
+          vendedor_id: vendedorId || null, 
+          valor_total: valorTotalOrcamento, 
+          observacoes: observacoes, 
+          status: "Rascunho",
+          data_emissao: dataEmissao
         }]).select().single();
+        
         if (erroOrc) throw erroOrc;
         idFinal = orcamentoGerado.id;
       }
@@ -233,8 +262,6 @@ function FormularioOrcamento() {
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
       
-      {/* O CABEÇALHO COM A LOGO GIGANTE FOI REMOVIDO DAQUI */}
-
       <div className="mb-8 mt-2">
         <h1 className="text-2xl font-bold text-gray-900 mb-1">
           {editId ? "✏️ Editando Orçamento" : cloneId ? "📋 Duplicando Orçamento" : "Novo Orçamento"}
@@ -244,19 +271,32 @@ function FormularioOrcamento() {
         </p>
       </div>
 
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-6">
-        <div className="flex-1">
+      {/* 🚀 NOVO BLOCO 1: GRID RESPONSIVA COM A DATA */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-12 gap-6">
+        
+        <div className="md:col-span-3">
+          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Data de Emissão *</label>
+          <input 
+            type="date" 
+            required
+            value={dataEmissao}
+            onChange={(e) => setDataEmissao(e.target.value)}
+            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium cursor-pointer"
+          />
+        </div>
+
+        <div className="md:col-span-5">
           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Cliente *</label>
-          <select value={clienteId} onChange={e => setClienteId(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium">
+          <select value={clienteId} onChange={e => setClienteId(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium cursor-pointer">
             <option value="">-- Selecione o Cliente --</option>
             {clientes.map(c => <option key={c.id} value={c.id}>{c.nome_razao_social}</option>)}
           </select>
         </div>
         
-        <div className="flex-1">
+        <div className="md:col-span-4">
           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Vendedor Responsável</label>
-          <select value={vendedorId} onChange={e => setVendedorId(e.target.value)} className="w-full p-3 bg-blue-50/50 border border-blue-100 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-blue-900 font-medium">
-            <option value="">-- Nenhum Vendedor Selecionado --</option>
+          <select value={vendedorId} onChange={e => setVendedorId(e.target.value)} className="w-full p-3 bg-blue-50/50 border border-blue-100 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-blue-900 font-medium cursor-pointer">
+            <option value="">-- Nenhum Vendedor --</option>
             {vendedores.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
           </select>
         </div>
@@ -398,7 +438,7 @@ function FormularioOrcamento() {
       <div className="flex justify-end pt-4">
         <button 
           onClick={gerarOuAtualizarOrcamento}
-          disabled={salvando || itens.length === 0 || !clienteId}
+          disabled={salvando || itens.length === 0 || !clienteId || !dataEmissao}
           className={`w-full md:w-auto text-white font-black text-lg py-4 px-10 rounded-xl shadow-lg transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:bg-gray-400 ${
             editId ? "bg-amber-500 hover:bg-amber-600" : "bg-blue-600 hover:bg-blue-700"
           }`}
@@ -412,84 +452,49 @@ function FormularioOrcamento() {
         </button>
       </div>
 
-      {/* 🚀 MODAL DE EDIÇÃO FLUTUANTE */}
       {modalAberto && itemEditando && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
-            
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
               <h3 className="font-bold text-lg text-gray-900">Editar Item</h3>
               <button onClick={fecharModalEdicao} className="text-gray-400 hover:text-red-500 transition-colors">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
             </div>
-            
             <div className="p-6 overflow-y-auto flex-1 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Descrição do Produto</label>
-                <input 
-                  type="text" 
-                  value={itemEditando.descricao} 
-                  onChange={(e) => setItemEditando({...itemEditando, descricao: e.target.value})}
-                  className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm font-medium"
-                />
+                <input type="text" value={itemEditando.descricao} onChange={(e) => setItemEditando({...itemEditando, descricao: e.target.value})} className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm font-medium" />
               </div>
-              
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Medidas / Especificações</label>
-                <textarea 
-                  rows={2} 
-                  value={itemEditando.medidas} 
-                  onChange={(e) => setItemEditando({...itemEditando, medidas: e.target.value})}
-                  className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm resize-y"
-                />
+                <textarea rows={2} value={itemEditando.medidas} onChange={(e) => setItemEditando({...itemEditando, medidas: e.target.value})} className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm resize-y" />
               </div>
-
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Quantidade</label>
-                  <input 
-                    type="number" min="1" 
-                    value={itemEditando.quantidade} 
-                    onChange={(e) => setItemEditando({...itemEditando, quantidade: Number(e.target.value)})}
-                    className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-center shadow-sm"
-                  />
+                  <input type="number" min="1" value={itemEditando.quantidade} onChange={(e) => setItemEditando({...itemEditando, quantidade: Number(e.target.value)})} className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-center shadow-sm" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">V. Unit (R$)</label>
-                  <input 
-                    type="number" step="0.01" 
-                    value={itemEditando.valor_unitario} 
-                    onChange={(e) => setItemEditando({...itemEditando, valor_unitario: Number(e.target.value)})}
-                    className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-right shadow-sm"
-                  />
+                  <input type="number" step="0.01" value={itemEditando.valor_unitario} onChange={(e) => setItemEditando({...itemEditando, valor_unitario: Number(e.target.value)})} className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-right shadow-sm" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-red-500 uppercase tracking-wider mb-1.5">Desc (R$)</label>
-                  <input 
-                    type="number" step="0.01" min="0" 
-                    value={itemEditando.desconto} 
-                    onChange={(e) => setItemEditando({...itemEditando, desconto: Number(e.target.value)})}
-                    className="w-full p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-right font-medium shadow-sm"
-                  />
+                  <input type="number" step="0.01" min="0" value={itemEditando.desconto} onChange={(e) => setItemEditando({...itemEditando, desconto: Number(e.target.value)})} className="w-full p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-right font-medium shadow-sm" />
                 </div>
               </div>
             </div>
-
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
-              <button onClick={fecharModalEdicao} className="px-5 py-2.5 text-gray-600 font-semibold hover:bg-gray-200 rounded-lg transition-colors">
-                Cancelar
-              </button>
+              <button onClick={fecharModalEdicao} className="px-5 py-2.5 text-gray-600 font-semibold hover:bg-gray-200 rounded-lg transition-colors">Cancelar</button>
               <button onClick={salvarEdicao} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors shadow-md flex items-center gap-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
                 Salvar Alterações
               </button>
             </div>
-            
           </div>
         </div>
       )}
-      
     </div>
   );
 }

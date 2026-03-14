@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "../lib/supabase"; // Corrigido o caminho do import
+import { supabase } from "../lib/supabase"; 
 import Link from "next/link";
 
 interface ResumoDashboard {
@@ -15,6 +15,7 @@ interface UltimoOrcamento {
   id: string;
   numero_orcamento: number;
   data_emissao: string;
+  created_at: string;
   valor_total: number;
   status: string;
   clientes: {
@@ -25,45 +26,73 @@ interface UltimoOrcamento {
 export default function DashboardPage() {
   const [resumo, setResumo] = useState<ResumoDashboard>({ totalOrcamentos: 0, valorTotal: 0, totalClientes: 0, totalProdutos: 0 });
   const [ultimosOrcamentos, setUltimosOrcamentos] = useState<UltimoOrcamento[]>([]);
+  const [todosOrcamentosBrutos, setTodosOrcamentosBrutos] = useState<UltimoOrcamento[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // 🚀 ESTADOS DOS FILTROS
+  const [tipoFiltro, setTipoFiltro] = useState("todos"); // 'todos', 'mes', 'dia'
+  const [mesSelecionado, setMesSelecionado] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [diaSelecionado, setDiaSelecionado] = useState(new Date().toISOString().slice(0, 10)); // YYYY-MM-DD
 
   useEffect(() => {
     carregarDashboard();
   }, []);
+
+  // 🚀 RECALCULA TUDO AUTOMATICAMENTE QUANDO O FILTRO MUDA
+  useEffect(() => {
+    if (todosOrcamentosBrutos.length === 0) return;
+
+    const orcamentosFiltrados = todosOrcamentosBrutos.filter(orc => {
+      if (tipoFiltro === "todos") return true;
+      
+      // Pega a data ignorando o fuso horário complexo
+      const dataBase = (orc.data_emissao || orc.created_at).split("T")[0]; 
+
+      if (tipoFiltro === "mes" && mesSelecionado) {
+        return dataBase.startsWith(mesSelecionado); // Ex: "2026-03-15" começa com "2026-03"
+      }
+      if (tipoFiltro === "dia" && diaSelecionado) {
+        return dataBase === diaSelecionado;
+      }
+      return true;
+    });
+
+    const valor = orcamentosFiltrados.reduce((acc, curr) => acc + Number(curr.valor_total), 0);
+    
+    setResumo(prev => ({
+      ...prev,
+      valorTotal: valor,
+      totalOrcamentos: orcamentosFiltrados.length
+    }));
+
+    // Atualiza a tabela rápida com os 5 mais recentes do período filtrado
+    setUltimosOrcamentos(orcamentosFiltrados.slice(0, 5));
+
+  }, [tipoFiltro, mesSelecionado, diaSelecionado, todosOrcamentosBrutos]);
 
   const carregarDashboard = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // 1. Busca os últimos 5 orçamentos para a tabela rápida
-      const { data: orcamentosData } = await supabase
-        .from("orcamentos")
-        .select(`id, numero_orcamento, data_emissao, valor_total, status, clientes ( nome_razao_social )`)
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(5);
-
-      if (orcamentosData) {
-        setUltimosOrcamentos(orcamentosData as unknown as UltimoOrcamento[]);
-      }
-
-      // 2. Busca totais para os Cards
-      const [contagemClientes, contagemProdutos, todosOrcamentos] = await Promise.all([
+      // Puxa TUDO de uma vez só (Super rápido)
+      const [contagemClientes, contagemProdutos, todosOrc] = await Promise.all([
         supabase.from("clientes").select("id", { count: "exact", head: true }).eq("user_id", user.id),
         supabase.from("produtos").select("id", { count: "exact", head: true }).eq("user_id", user.id),
-        supabase.from("orcamentos").select("valor_total").eq("user_id", user.id)
+        supabase.from("orcamentos").select(`id, numero_orcamento, data_emissao, created_at, valor_total, status, clientes ( nome_razao_social )`)
+          .eq("user_id", user.id)
+          .order("numero_orcamento", { ascending: false })
       ]);
 
-      const totalDinheiro = todosOrcamentos.data?.reduce((acc: number, curr: { valor_total: number }) => acc + Number(curr.valor_total), 0) || 0;
-      const totalOrcamentosFeitos = todosOrcamentos.data?.length || 0;
+      if (todosOrc.data) {
+        setTodosOrcamentosBrutos(todosOrc.data as unknown as UltimoOrcamento[]);
+      }
 
-      setResumo({
-        totalOrcamentos: totalOrcamentosFeitos,
-        valorTotal: totalDinheiro,
+      setResumo(prev => ({
+        ...prev,
         totalClientes: contagemClientes.count || 0,
         totalProdutos: contagemProdutos.count || 0
-      });
+      }));
 
     } catch (error) {
       console.error("Erro ao carregar painel:", error);
@@ -91,7 +120,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
       
       {/* Cabeçalho de Boas-Vindas */}
       <div>
@@ -99,8 +128,46 @@ export default function DashboardPage() {
         <p className="text-gray-500 mt-1">Acompanhe o desempenho do seu negócio em tempo real.</p>
       </div>
 
+      {/* 🚀 FILTRO INTELIGENTE */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 md:items-center">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-bold text-gray-500 uppercase tracking-wider">Período:</span>
+          <select 
+            value={tipoFiltro} 
+            onChange={(e) => setTipoFiltro(e.target.value)}
+            className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium transition-all"
+          >
+            <option value="todos">Todo o período</option>
+            <option value="mes">Filtrar por Mês</option>
+            <option value="dia">Filtrar por Dia</option>
+          </select>
+        </div>
+
+        {tipoFiltro === "mes" && (
+          <div className="animate-fade-in w-full md:w-auto">
+            <input 
+              type="month" 
+              value={mesSelecionado}
+              onChange={(e) => setMesSelecionado(e.target.value)}
+              className="w-full md:w-auto px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 transition-all"
+            />
+          </div>
+        )}
+
+        {tipoFiltro === "dia" && (
+          <div className="animate-fade-in w-full md:w-auto">
+            <input 
+              type="date" 
+              value={diaSelecionado}
+              onChange={(e) => setDiaSelecionado(e.target.value)}
+              className="w-full md:w-auto px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 transition-all"
+            />
+          </div>
+        )}
+      </div>
+
       {/* BLOCO 1: CARDS DE RESUMO (GRID) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mt-4">
         
         {/* Card 1: Valor Financeiro */}
         <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-6 shadow-md text-white">
@@ -160,9 +227,11 @@ export default function DashboardPage() {
       {/* BLOCO 2: ACESSO RÁPIDO AOS ÚLTIMOS ORÇAMENTOS */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-8">
         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-          <h2 className="text-lg font-bold text-gray-900">Últimos Orçamentos</h2>
+          <h2 className="text-lg font-bold text-gray-900">
+            {tipoFiltro === "todos" ? "Últimos Orçamentos" : "Orçamentos do Período"}
+          </h2>
           <Link href="/dashboard/historico" className="text-sm font-bold text-blue-600 hover:text-blue-800 transition-colors">
-            Ver Todos →
+            Ver Histórico →
           </Link>
         </div>
         
@@ -171,9 +240,9 @@ export default function DashboardPage() {
             <div className="bg-gray-50 p-4 rounded-full mb-4">
               <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
             </div>
-            <p className="text-gray-500 font-medium mb-4">Você ainda não gerou nenhum orçamento.</p>
+            <p className="text-gray-500 font-medium mb-4">Nenhum orçamento encontrado neste período.</p>
             <Link href="/dashboard/orcamentos" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-lg transition-colors shadow-sm">
-              Criar Meu Primeiro Orçamento
+              Criar Novo Orçamento
             </Link>
           </div>
         ) : (

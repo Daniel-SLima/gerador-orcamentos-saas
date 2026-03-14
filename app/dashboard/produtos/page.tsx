@@ -32,8 +32,10 @@ export default function ProdutosPage() {
   const [removerFotoAntiga, setRemoverFotoAntiga] = useState(false); 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- NOVO ESTADO: Controle do Menu de Ações ---
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
+
+  // 🚀 NOVO ESTADO: Termo de Busca
+  const [termoBusca, setTermoBusca] = useState("");
 
   useEffect(() => {
     carregarProdutos();
@@ -226,10 +228,20 @@ export default function ProdutosPage() {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
   };
 
+  // 🚀 LÓGICA DE FILTRAGEM INTELIGENTE (Descrição ou Código)
+  const produtosFiltrados = produtos.filter((produto) => {
+    const busca = termoBusca.toLowerCase();
+    return (
+      produto.descricao?.toLowerCase().includes(busca) ||
+      produto.codigo_item?.toLowerCase().includes(busca)
+    );
+  });
+
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto" onClick={() => menuAbertoId && setMenuAbertoId(null)}>
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Meus Produtos</h1>
       
+      {/* Formulário */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
         <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
           <h2 className="text-lg font-semibold text-gray-800">
@@ -243,8 +255,6 @@ export default function ProdutosPage() {
         </div>
 
         <form onSubmit={salvarProduto} className="flex flex-col md:flex-row gap-8">
-          
-          {/* Coluna da Imagem */}
           <div className="w-full md:w-1/3 lg:w-1/4 flex flex-col items-center justify-start p-4 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50 text-center">
             {previewUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -267,74 +277,36 @@ export default function ProdutosPage() {
                 </button>
               )}
             </div>
-            
             <p className="text-xs text-gray-400 mt-3">Máx: 2MB (JPG, PNG)</p>
           </div>
 
           <div className="w-full md:w-2/3 lg:w-3/4 flex flex-col gap-5">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Descrição do Produto/Serviço *</label>
-              {/* 🚀 TROCADO PARA TEXTAREA COM RESIZE */}
-              <textarea
-                required
-                rows={3}
-                value={descricao}
-                onChange={(e) => setDescricao(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none transition-all shadow-sm resize-y"
-                placeholder="Ex: Cadeira de Escritório Ergonômica"
-              />
+              <textarea required rows={3} value={descricao} onChange={(e) => setDescricao(e.target.value)} className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none transition-all shadow-sm resize-y" placeholder="Ex: Cadeira de Escritório Ergonômica" />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Código do Item</label>
-                {/* 🚀 TROCADO PARA TEXTAREA COM RESIZE */}
-                <textarea
-                  rows={2}
-                  value={codigoItem}
-                  onChange={(e) => setCodigoItem(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none transition-all shadow-sm resize-y"
-                  placeholder="Ex: PROD-01"
-                />
+                <textarea rows={2} value={codigoItem} onChange={(e) => setCodigoItem(e.target.value)} className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none transition-all shadow-sm resize-y" placeholder="Ex: PROD-01" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Valor Unitário (R$) *</label>
-                {/* O Valor continua input porque é apenas número curto */}
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  required
-                  value={valorUnitario}
-                  onChange={(e) => setValorUnitario(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none transition-all shadow-sm"
-                  placeholder="0.00"
-                />
+                <input type="number" step="0.01" min="0" required value={valorUnitario} onChange={(e) => setValorUnitario(e.target.value)} className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none transition-all shadow-sm" placeholder="0.00" />
               </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Medidas / Especificações</label>
-              {/* 🚀 TROCADO PARA TEXTAREA COM RESIZE */}
-              <textarea
-                rows={3}
-                value={medidas}
-                onChange={(e) => setMedidas(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none transition-all shadow-sm resize-y"
-                placeholder="Ex: 50x50x100cm ou 'Pacote com 10 un'"
-              />
+              <textarea rows={3} value={medidas} onChange={(e) => setMedidas(e.target.value)} className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none transition-all shadow-sm resize-y" placeholder="Ex: 50x50x100cm ou 'Pacote com 10 un'" />
             </div>
 
             <div className="pt-2 flex justify-end">
-              <button
-                type="submit"
-                disabled={saving}
-                className={`w-full sm:w-auto px-8 py-3 text-white font-medium rounded-lg transition-colors shadow-sm disabled:opacity-50 ${produtoEditandoId ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-700'}`}
-              >
+              <button type="submit" disabled={saving} className={`w-full sm:w-auto px-8 py-3 text-white font-medium rounded-lg transition-colors shadow-sm disabled:opacity-50 ${produtoEditandoId ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-700'}`}>
                 {saving ? "Processando..." : (produtoEditandoId ? "Atualizar Produto" : "Adicionar Produto")}
               </button>
             </div>
-
           </div>
         </form>
         
@@ -345,17 +317,33 @@ export default function ProdutosPage() {
         )}
       </div>
 
-      {/* A Listagem não sofreu alterações */}
+      {/* 🚀 BARRA DE BUSCA RÁPIDA */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row items-center gap-4">
+        <div className="relative w-full">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          </div>
+          <input 
+            type="text" 
+            placeholder="Buscar produto por descrição ou código..." 
+            value={termoBusca}
+            onChange={(e) => setTermoBusca(e.target.value)}
+            className="w-full pl-10 pr-3 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 transition-all"
+          />
+        </div>
+      </div>
+
+      {/* Listagem */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-visible">
         {loading ? (
           <div className="p-8 text-center text-gray-500">Carregando produtos...</div>
-        ) : produtos.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">Nenhum produto cadastrado ainda.</div>
+        ) : produtosFiltrados.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">Nenhum produto encontrado.</div>
         ) : (
-          <div className="pb-16">
+          <div className="pb-16 md:pb-0">
             
             <div className="block md:hidden divide-y divide-gray-100">
-              {produtos.map((produto) => (
+              {produtosFiltrados.map((produto) => (
                 <div key={produto.id} className="p-4 flex gap-4 hover:bg-gray-50 transition-colors">
                   <div className="shrink-0">
                     {produto.imagem_url ? (
@@ -369,30 +357,15 @@ export default function ProdutosPage() {
                     <div className="flex justify-between items-start">
                       <h3 className="font-semibold text-gray-900 leading-tight mb-1 pr-6">{produto.descricao}</h3>
                       
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); toggleMenu(produto.id); }}
-                        className="p-1 -mr-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors focus:outline-none"
-                      >
+                      <button onClick={(e) => { e.stopPropagation(); toggleMenu(produto.id); }} className="p-1 -mr-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors focus:outline-none">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
                       </button>
 
                       {menuAbertoId === produto.id && (
                         <div className="absolute right-0 top-6 w-36 bg-white border border-gray-100 rounded-xl shadow-xl z-50 flex flex-col py-1 animate-fade-in">
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); iniciarEdicao(produto); }}
-                            className="px-4 py-2 text-sm text-left font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                            Editar
-                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); iniciarEdicao(produto); }} className="px-4 py-2 text-sm text-left font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg> Editar</button>
                           <div className="h-px bg-gray-100 my-1 mx-2"></div>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); deletarProduto(produto); }}
-                            className="px-4 py-2 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                            Excluir
-                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); deletarProduto(produto); }} className="px-4 py-2 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> Excluir</button>
                         </div>
                       )}
                     </div>
@@ -407,7 +380,7 @@ export default function ProdutosPage() {
               ))}
             </div>
 
-            <div className="hidden md:block overflow-x-auto">
+            <div className="hidden md:block overflow-x-auto pb-24">
               <table className="w-full text-left border-collapse min-w-[900px]">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
@@ -420,7 +393,7 @@ export default function ProdutosPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {produtos.map((produto) => (
+                  {produtosFiltrados.map((produto) => (
                     <tr key={produto.id} className="hover:bg-gray-50/50 transition-colors">
                       <td className="p-4 flex justify-center">
                         {produto.imagem_url ? (
@@ -438,30 +411,12 @@ export default function ProdutosPage() {
                       <td className="p-4 text-green-600 font-bold">{formatarMoeda(produto.valor_unitario)}</td>
                       
                       <td className="p-4 text-center relative">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); toggleMenu(produto.id); }}
-                          className="p-2 mx-auto text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors focus:outline-none flex justify-center"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
-                        </button>
-
+                        <button onClick={(e) => { e.stopPropagation(); toggleMenu(produto.id); }} className="p-2 mx-auto text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors focus:outline-none flex justify-center"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg></button>
                         {menuAbertoId === produto.id && (
                           <div className="absolute right-8 top-10 w-36 bg-white border border-gray-100 rounded-xl shadow-xl z-50 flex flex-col py-1 animate-fade-in">
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); iniciarEdicao(produto); }}
-                              className="px-4 py-2 text-sm text-left font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                              Editar
-                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); iniciarEdicao(produto); }} className="px-4 py-2 text-sm text-left font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg> Editar</button>
                             <div className="h-px bg-gray-100 my-1 mx-2"></div>
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); deletarProduto(produto); }}
-                              className="px-4 py-2 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                              Excluir
-                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); deletarProduto(produto); }} className="px-4 py-2 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> Excluir</button>
                           </div>
                         )}
                       </td>
@@ -470,6 +425,7 @@ export default function ProdutosPage() {
                 </tbody>
               </table>
             </div>
+
           </div>
         )}
       </div>
