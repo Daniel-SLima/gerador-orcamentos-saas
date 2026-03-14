@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useRef } from "react";
 import { supabase } from "../../lib/supabase";
 import { useSearchParams } from "next/navigation";
 
-// --- TIPAGENS ---
 interface Cliente { id: string; nome_razao_social: string; }
 interface Vendedor { id: string; nome: string; }
 interface Produto { id: string; descricao: string; valor_unitario: number; medidas: string; }
@@ -29,11 +28,18 @@ interface ItemBanco {
   subtotal: number;
 }
 
-// 🚀 FUNÇÃO PARA PEGAR A DATA ATUAL DO BRASIL NO FORMATO YYYY-MM-DD
+// 🚀 NOVA INTERFACE PARA ANEXOS VINDOS DO BANCO
+interface AnexoBanco {
+  id: string;
+  file_name: string;
+  file_url: string;
+  file_path: string;
+}
+
 const obterDataAtualBrasil = () => {
   const data = new Date();
   const options = { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' } as const;
-  const dataFormatada = data.toLocaleDateString('pt-BR', options); // Retorna DD/MM/YYYY
+  const dataFormatada = data.toLocaleDateString('pt-BR', options); 
   const [dia, mes, ano] = dataFormatada.split('/');
   return `${ano}-${mes}-${dia}`;
 };
@@ -50,9 +56,7 @@ function FormularioOrcamento() {
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
 
-  // 🚀 NOVO ESTADO: DATA DE EMISSÃO (Já começa com o dia de hoje no Brasil)
   const [dataEmissao, setDataEmissao] = useState(obterDataAtualBrasil());
-  
   const [clienteId, setClienteId] = useState("");
   const [vendedorId, setVendedorId] = useState("");
   const [observacoes, setObservacoes] = useState("");
@@ -64,11 +68,14 @@ function FormularioOrcamento() {
   const [desconto, setDesconto] = useState<number>(0);
 
   const [itens, setItens] = useState<ItemCarrinho[]>([]);
-
-  // ESTADOS DO MODAL DE EDIÇÃO
   const [modalAberto, setModalAberto] = useState(false);
   const [indexEditando, setIndexEditando] = useState<number | null>(null);
   const [itemEditando, setItemEditando] = useState<ItemCarrinho | null>(null);
+
+  // 🚀 ESTADOS PARA ANEXOS DIVIDIDOS (OS QUE JÁ EXISTEM NO BANCO E OS NOVOS)
+  const [anexosSalvos, setAnexosSalvos] = useState<AnexoBanco[]>([]); 
+  const [arquivosAnexos, setArquivosAnexos] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     carregarListasEPreencher();
@@ -95,12 +102,15 @@ function FormularioOrcamento() {
         const { data: orcData } = await supabase.from("orcamentos").select("*").eq("id", targetId).single();
         const { data: itensData } = await supabase.from("itens_orcamento").select("*").eq("orcamento_id", targetId);
 
+        // 🚀 BUSCA OS ANEXOS QUE JÁ EXISTEM NESSE ORÇAMENTO NO BANCO DE DADOS
+        const { data: anexosData } = await supabase.from("orcamento_anexos").select("*").eq("orcamento_id", targetId);
+        if (anexosData) setAnexosSalvos(anexosData as AnexoBanco[]);
+
         if (orcData) {
           setClienteId(orcData.cliente_id || "");
           setVendedorId(orcData.vendedor_id || "");
           setObservacoes(orcData.observacoes || "");
           
-          // 🚀 SE ESTIVER EDITANDO OU CLONANDO, PUXA A DATA DO BANCO
           if (orcData.data_emissao) {
             setDataEmissao(orcData.data_emissao.split('T')[0]);
           }
@@ -193,6 +203,32 @@ function FormularioOrcamento() {
     fecharModalEdicao();
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const novosArquivos = Array.from(e.target.files);
+      setArquivosAnexos([...arquivosAnexos, ...novosArquivos]);
+    }
+  };
+
+  const removerAnexoNovo = (indexRemover: number) => {
+    setArquivosAnexos(arquivosAnexos.filter((_, index) => index !== indexRemover));
+  };
+
+  // 🚀 FUNÇÃO QUE EXCLUI ANEXOS ANTIGOS DO BANCO DIRETAMENTE
+  const removerAnexoSalvo = async (idParaRemover: string, filePath: string) => {
+    if (!window.confirm("Tem certeza que deseja apagar este anexo permanentemente?")) return;
+    try {
+      // 1. Apaga o arquivo físico do Storage
+      await supabase.storage.from("anexos").remove([filePath]);
+      // 2. Apaga o registro da tabela
+      await supabase.from("orcamento_anexos").delete().eq("id", idParaRemover);
+      // 3. Remove da tela
+      setAnexosSalvos(anexosSalvos.filter(a => a.id !== idParaRemover));
+    } catch (error) {
+      alert("Erro ao apagar anexo do banco de dados.");
+    }
+  };
+
   const totalBruto = itens.reduce((acc, item) => acc + (item.quantidade * item.valor_unitario), 0);
   const totalDescontos = itens.reduce((acc, item) => acc + Number(item.desconto), 0);
   const valorTotalOrcamento = itens.reduce((acc, item) => acc + item.subtotal, 0);
@@ -209,7 +245,6 @@ function FormularioOrcamento() {
 
       let idFinal = "";
 
-      // 🚀 SALVANDO A DATA ESCOLHIDA NO BANCO DE DADOS
       if (editId) {
         const { error: erroOrc } = await supabase.from("orcamentos").update({
           cliente_id: clienteId, 
@@ -246,6 +281,31 @@ function FormularioOrcamento() {
       const { error: erroItens } = await supabase.from("itens_orcamento").insert(itensParaBanco);
       if (erroItens) throw erroItens;
 
+      // 🚀 UPLOAD DE NOVOS ANEXOS
+      if (arquivosAnexos.length > 0) {
+        const anexosParaSalvar = [];
+        for (const file of arquivosAnexos) {
+          const ext = file.name.split('.').pop();
+          const filePath = `${user.id}/${idFinal}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+          
+          const { error: uploadError } = await supabase.storage.from("anexos").upload(filePath, file);
+          
+          if (!uploadError) {
+            const { data: { publicUrl } } = supabase.storage.from("anexos").getPublicUrl(filePath);
+            anexosParaSalvar.push({
+              orcamento_id: idFinal,
+              file_name: file.name,
+              file_url: publicUrl,
+              file_path: filePath
+            });
+          }
+        }
+        
+        if (anexosParaSalvar.length > 0) {
+          await supabase.from("orcamento_anexos").insert(anexosParaSalvar);
+        }
+      }
+
       window.open(`/imprimir/${idFinal}?action=view`, "_blank");
       window.location.href = "/dashboard/historico";
 
@@ -271,18 +331,10 @@ function FormularioOrcamento() {
         </p>
       </div>
 
-      {/* 🚀 NOVO BLOCO 1: GRID RESPONSIVA COM A DATA */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-12 gap-6">
-        
         <div className="md:col-span-3">
           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Data de Emissão *</label>
-          <input 
-            type="date" 
-            required
-            value={dataEmissao}
-            onChange={(e) => setDataEmissao(e.target.value)}
-            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium cursor-pointer"
-          />
+          <input type="date" required value={dataEmissao} onChange={(e) => setDataEmissao(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium cursor-pointer" />
         </div>
 
         <div className="md:col-span-5">
@@ -417,10 +469,51 @@ function FormularioOrcamento() {
             </table>
           </div>
           
-          <div className="bg-gray-50 p-6 border-t border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-            <div className="w-full md:w-1/2">
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Observações do Orçamento</label>
-              <textarea value={observacoes} onChange={e => setObservacoes(e.target.value)} rows={3} placeholder="Condições de pagamento, prazos de entrega, etc..." className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
+          <div className="bg-gray-50 p-6 border-t border-gray-200 flex flex-col md:flex-row justify-between items-start gap-6">
+            <div className="w-full md:w-1/2 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Observações do Orçamento</label>
+                <textarea value={observacoes} onChange={e => setObservacoes(e.target.value)} rows={3} className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
+              </div>
+              
+              {/* 🚀 BLOCO DE ANEXOS */}
+              <div className="p-4 border-2 border-dashed border-gray-200 rounded-xl bg-white">
+                <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">📎 Anexos Opcionais (Válidos por 15 dias)</label>
+                <input type="file" ref={fileInputRef} multiple accept="image/*,.pdf" onChange={handleFileChange} className="hidden" />
+                <button 
+                  onClick={(e) => { e.preventDefault(); fileInputRef.current?.click(); }} 
+                  className="w-full py-2 bg-blue-50 text-blue-700 font-semibold rounded-lg hover:bg-blue-100 transition-colors text-sm border border-blue-100"
+                >
+                  + Adicionar Foto ou PDF
+                </button>
+                
+                {/* 🚀 EXIBE OS ANEXOS QUE JÁ ESTÃO NO BANCO (MUDAM DE COR PARA DIFERENCIAR) */}
+                {anexosSalvos.length > 0 && (
+                  <ul className="mt-3 space-y-2 mb-3">
+                    {anexosSalvos.map((anexo) => (
+                      <li key={anexo.id} className="flex justify-between items-center text-sm bg-blue-50 p-2 rounded border border-blue-100">
+                        <a href={anexo.file_url} target="_blank" rel="noreferrer" className="truncate text-blue-700 hover:underline max-w-[200px]">
+                          {anexo.file_name}
+                        </a>
+                        <button type="button" onClick={() => removerAnexoSalvo(anexo.id, anexo.file_path)} className="text-red-500 hover:text-red-700 font-bold ml-2">X</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {/* EXIBE OS ARQUIVOS NOVOS QUE AINDA VÃO SUBIR */}
+                {arquivosAnexos.length > 0 && (
+                  <ul className="mt-3 space-y-2">
+                    {arquivosAnexos.map((file, i) => (
+                      <li key={i} className="flex justify-between items-center text-sm bg-gray-50 p-2 rounded border border-gray-100">
+                        <span className="truncate text-gray-600 max-w-[200px]">{file.name}</span>
+                        <button type="button" onClick={() => removerAnexoNovo(i)} className="text-red-500 hover:text-red-700 font-bold ml-2">X</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
             </div>
 
             <div className="w-full md:w-auto bg-white p-5 rounded-xl border border-gray-200 shadow-sm min-w-[300px]">
@@ -443,7 +536,7 @@ function FormularioOrcamento() {
             editId ? "bg-amber-500 hover:bg-amber-600" : "bg-blue-600 hover:bg-blue-700"
           }`}
         >
-          {salvando ? "Processando..." : (
+          {salvando ? "Processando e Enviando Anexos..." : (
             <>
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
               {editId ? "Salvar Alterações e Ver PDF" : "Gerar PDF do Orçamento"}

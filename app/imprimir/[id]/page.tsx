@@ -3,15 +3,14 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabase";
-import { Document, Page, Text, View, StyleSheet, Image as PDFImage, pdf } from "@react-pdf/renderer";
+import { Document, Page, Text, View, StyleSheet, Image as PDFImage, pdf, Link as PDFLink } from "@react-pdf/renderer";
 
-// 🚀 1. ATUALIZANDO AS INTERFACES PARA RECEBER OS NOVOS CAMPOS
 interface Cliente {
   nome_razao_social: string;
   cpf_cnpj: string;
   telefone: string;
   contato_nome: string;
-  endereco?: string; // Campo antigo (Plano B)
+  endereco?: string; 
   rua_numero?: string;
   bairro?: string;
   cidade?: string;
@@ -28,7 +27,7 @@ interface Empresa {
   cnpj: string;
   telefone: string;
   logo_url: string;
-  endereco_completo?: string; // Campo antigo (Plano B)
+  endereco_completo?: string; 
   rua_numero?: string;
   bairro?: string;
   cidade?: string;
@@ -58,11 +57,18 @@ interface Orcamento {
   vendedores?: Vendedor | Vendedor[] | null;
 }
 
+interface Anexo {
+  id: string;
+  file_name: string;
+  file_url: string;
+}
+
 interface DadosImpressao {
   orcamento: Orcamento;
   cliente: Cliente;
   itens: ItemOrcamento[];
   empresa: Empresa | null;
+  anexos: Anexo[]; 
 }
 
 const formatarMoeda = (valor: number) => {
@@ -76,7 +82,6 @@ const formatarData = (dataStr: string) => {
   return new Intl.DateTimeFormat('pt-BR').format(data);
 };
 
-// 🚀 2. FUNÇÃO INTELIGENTE PARA MONTAR O ENDEREÇO
 const montarEnderecoLinhas = (
   rua?: string,
   bairro?: string,
@@ -86,22 +91,13 @@ const montarEnderecoLinhas = (
 ) => {
   if (rua || bairro || cidade || uf) {
     const linha1 = rua || "";
-
     let linha2 = "";
     if (bairro) linha2 += bairro;
     if (cidade) linha2 += linha2 ? ` - ${cidade}` : cidade;
     if (uf) linha2 += cidade ? `/${uf}` : uf;
-
-    return {
-      linha1,
-      linha2
-    };
+    return { linha1, linha2 };
   }
-
-  return {
-    linha1: fallbackAntigo || "",
-    linha2: ""
-  };
+  return { linha1: fallbackAntigo || "", linha2: "" };
 };
 
 const styles = StyleSheet.create({
@@ -147,10 +143,15 @@ const styles = StyleSheet.create({
   totalTextFinal: { fontSize: 11, color: "#6b7280", fontWeight: "bold", textTransform: "uppercase" },
   totalValueFinal: { fontSize: 16, fontWeight: "bold", color: "#111827", textAlign: "right" },
   
-  obsSection: { marginBottom: 30 },
+  obsSection: { marginBottom: 20 },
   obsTitle: { fontSize: 10, color: "#9ca3af", marginBottom: 5, textTransform: "uppercase" },
   obsText: { fontSize: 10, color: "#4b5563", lineHeight: 1.5, backgroundColor: "#f9fafb", padding: 12, borderRadius: 6 },
   
+  anexosSection: { backgroundColor: "#eff6ff", padding: 12, borderRadius: 6, borderLeftWidth: 4, borderLeftColor: "#3b82f6", borderLeftStyle: "solid", marginBottom: 30 },
+  anexosTitle: { fontSize: 10, color: "#1e3a8a", fontWeight: "bold", textTransform: "uppercase", marginBottom: 6 },
+  anexosLink: { fontSize: 9, color: "#2563eb", textDecoration: "underline", marginBottom: 4 },
+  anexosWarning: { fontSize: 8, color: "#60a5fa", marginTop: 6 },
+
   signaturesContainer: { flexDirection: "row", justifyContent: "space-between", marginTop: 40, marginBottom: 20 },
   signatureBlock: { width: "45%", alignItems: "center" },
   signatureLine: { width: "100%", borderTopWidth: 1, borderTopColor: "#9ca3af", borderTopStyle: "solid", marginBottom: 5 },
@@ -170,22 +171,21 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
   const totalBruto = dados.itens?.reduce((acc, item) => acc + (item.quantidade * item.valor_unitario_aplicado), 0) || 0;
   const totalDescontos = dados.itens?.reduce((acc, item) => acc + Number(item.desconto || 0), 0) || 0;
 
-  // 🚀 3. PREPARANDO OS ENDEREÇOS COM A NOSSA FUNÇÃO INTELIGENTE
   const enderecoEmpresa = montarEnderecoLinhas(
-  dados.empresa?.rua_numero,
-  dados.empresa?.bairro,
-  dados.empresa?.cidade,
-  dados.empresa?.uf,
-  dados.empresa?.endereco_completo
-);
+    dados.empresa?.rua_numero,
+    dados.empresa?.bairro,
+    dados.empresa?.cidade,
+    dados.empresa?.uf,
+    dados.empresa?.endereco_completo
+  );
 
-const enderecoCliente = montarEnderecoLinhas(
-  dados.cliente?.rua_numero,
-  dados.cliente?.bairro,
-  dados.cliente?.cidade,
-  dados.cliente?.uf,
-  dados.cliente?.endereco
-);
+  const enderecoCliente = montarEnderecoLinhas(
+    dados.cliente?.rua_numero,
+    dados.cliente?.bairro,
+    dados.cliente?.cidade,
+    dados.cliente?.uf,
+    dados.cliente?.endereco
+  );
 
   return (
     <Document>
@@ -196,7 +196,6 @@ const enderecoCliente = montarEnderecoLinhas(
             <Text style={styles.companyName}>{dados.empresa?.nome_fantasia || "EMPRESA NÃO INFORMADA"}</Text>
             {dados.empresa?.cnpj ? <Text style={styles.companyText}>CNPJ: {dados.empresa.cnpj}</Text> : null}
             {dados.empresa?.telefone ? <Text style={styles.companyText}>Tel: {dados.empresa.telefone}</Text> : null}
-            {/* 🚀 IMPRIMINDO O ENDEREÇO DA EMPRESA */}
             {enderecoEmpresa.linha1 ? <Text style={styles.companyText}>{enderecoEmpresa.linha1}</Text> : null}
             {enderecoEmpresa.linha2 ? <Text style={styles.companyText}>{enderecoEmpresa.linha2}</Text> : null}
           </View>
@@ -216,14 +215,8 @@ const enderecoCliente = montarEnderecoLinhas(
             {dados.cliente?.contato_nome ? <Text style={styles.clientInfo}>Contato: {dados.cliente.contato_nome}</Text> : null}
             {dados.cliente?.cpf_cnpj ? <Text style={styles.clientInfo}>CPF/CNPJ: {dados.cliente.cpf_cnpj}</Text> : null}
             {dados.cliente?.telefone ? <Text style={styles.clientInfo}>Telefone: {dados.cliente.telefone}</Text> : null}
-            {/* 🚀 IMPRIMINDO O ENDEREÇO DO CLIENTE */}
-            {enderecoCliente.linha1 ? (
-  <Text style={styles.clientInfo}>Endereço: {enderecoCliente.linha1}</Text>
-) : null}
-
-{enderecoCliente.linha2 ? (
-  <Text style={styles.clientInfo}>{enderecoCliente.linha2}</Text>
-) : null}
+            {enderecoCliente.linha1 ? <Text style={styles.clientInfo}>Endereço: {enderecoCliente.linha1}</Text> : null}
+            {enderecoCliente.linha2 ? <Text style={styles.clientInfo}>{enderecoCliente.linha2}</Text> : null}
           </View>
           
           <View style={{ width: '45%', alignItems: 'flex-end' }}>
@@ -243,45 +236,24 @@ const enderecoCliente = montarEnderecoLinhas(
 
         <View style={styles.table}>
           <View style={styles.tableHeader} fixed>
-            <View style={styles.colImg}>
-              <Text style={styles.tableHeaderText}>Imagem</Text>
-            </View>
-            <View style={styles.colDescHeader}>
-              <Text style={styles.tableHeaderText}>Descrição do Serviço / Produto</Text>
-            </View>
-            <View style={styles.colQty}>
-              <Text style={styles.tableHeaderText}>Qtd</Text>
-            </View>
-            <View style={styles.colUnit}>
-              <Text style={styles.tableHeaderText}>V. Unit</Text>
-            </View>
-            <View style={styles.colTotal}>
-              <Text style={styles.tableHeaderText}>Subtotal</Text>
-            </View>
+            <View style={styles.colImg}><Text style={styles.tableHeaderText}>Imagem</Text></View>
+            <View style={styles.colDescHeader}><Text style={styles.tableHeaderText}>Descrição do Serviço / Produto</Text></View>
+            <View style={styles.colQty}><Text style={styles.tableHeaderText}>Qtd</Text></View>
+            <View style={styles.colUnit}><Text style={styles.tableHeaderText}>V. Unit</Text></View>
+            <View style={styles.colTotal}><Text style={styles.tableHeaderText}>Subtotal</Text></View>
           </View>
 
           {dados.itens?.map((item: ItemOrcamento, index: number) => {
-            const urlDaImagem = Array.isArray(item.produtos) 
-              ? item.produtos[0]?.imagem_url 
-              : item.produtos?.imagem_url;
-
+            const urlDaImagem = Array.isArray(item.produtos) ? item.produtos[0]?.imagem_url : item.produtos?.imagem_url;
             return (
               <View style={styles.tableRow} key={index} wrap={false}>
                 <View style={styles.colImg}>
-                  {urlDaImagem ? (
-                    <PDFImage src={urlDaImagem} style={styles.itemImage} />
-                  ) : (
-                    <Text style={{ fontSize: 8, color: "#9ca3af" }}>-</Text>
-                  )}
+                  {urlDaImagem ? <PDFImage src={urlDaImagem} style={styles.itemImage} /> : <Text style={{ fontSize: 8, color: "#9ca3af" }}>-</Text>}
                 </View>
-
                 <View style={styles.colDesc}>
                   <Text style={styles.tableCell}>{item.descricao || "Item"}</Text>
-                  {item.medidas ? (
-                    <Text style={styles.medidasText}>Medidas: {item.medidas}</Text>
-                  ) : null}
+                  {item.medidas ? <Text style={styles.medidasText}>Medidas: {item.medidas}</Text> : null}
                 </View>
-
                 <Text style={[styles.colQty, styles.tableCell]}>{String(item.quantidade || 0)}</Text>
                 <Text style={[styles.colUnit, styles.tableCell]}>{formatarMoeda(item.valor_unitario_aplicado)}</Text>
                 <Text style={[styles.colTotal, styles.tableCell]}>{formatarMoeda(item.subtotal)}</Text>
@@ -296,16 +268,13 @@ const enderecoCliente = montarEnderecoLinhas(
               <Text style={styles.totalTextNormal}>Subtotal Bruto:</Text>
               <Text style={styles.totalTextNormal}>{formatarMoeda(totalBruto)}</Text>
             </View>
-            
             {totalDescontos > 0 && (
               <View style={styles.totalRow}>
                 <Text style={styles.totalTextDiscount}>Descontos Aplicados:</Text>
                 <Text style={styles.totalTextDiscount}>- {formatarMoeda(totalDescontos)}</Text>
               </View>
             )}
-            
             <View style={styles.totalDivider} />
-            
             <View style={[styles.totalRow, { marginTop: 5, alignItems: "center" }]}>
               <Text style={styles.totalTextFinal}>Valor Total</Text>
               <Text style={styles.totalValueFinal}>{formatarMoeda(dados.orcamento.valor_total)}</Text>
@@ -320,13 +289,27 @@ const enderecoCliente = montarEnderecoLinhas(
           </View>
         ) : null}
 
+        {/* 🚀 BUG CORRIGIDO: EMOJI REMOVIDO PARA NÃO QUEBRAR O PDF */}
+        {dados.anexos && dados.anexos.length > 0 ? (
+          <View style={styles.anexosSection} wrap={false}>
+            <Text style={styles.anexosTitle}>ANEXOS E ARQUIVOS DO PROJETO</Text>
+            {dados.anexos.map((anexo, idx) => (
+              <PDFLink key={idx} src={anexo.file_url} style={styles.anexosLink}>
+                {anexo.file_name} (Clique aqui para abrir)
+              </PDFLink>
+            ))}
+            <Text style={styles.anexosWarning}>
+              * Os arquivos acima estão disponíveis para visualização e download pelo prazo de validade deste orçamento.
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.signaturesContainer} wrap={false}>
           <View style={styles.signatureBlock}>
             <View style={styles.signatureLine} />
             <Text style={styles.signatureText}>{dados.empresa?.nome_fantasia || "Assinatura Comercial"}</Text>
             <Text style={styles.signatureRole}>Departamento de Vendas</Text>
           </View>
-
           <View style={styles.signatureBlock}>
             <View style={styles.signatureLine} />
             <Text style={styles.signatureText}>{dados.cliente?.nome_razao_social || "Assinatura do Cliente"}</Text>
@@ -362,7 +345,6 @@ export default function ImprimirOrcamento() {
   useEffect(() => {
     const processarPDF = async () => {
       try {
-        // 🚀 4. AVISANDO O SUPABASE PARA TRAZER AS COLUNAS NOVAS DO CLIENTE
         const { data: orcamento, error: erroOrc } = await supabase
           .from("orcamentos")
           .select(`
@@ -388,11 +370,17 @@ export default function ImprimirOrcamento() {
           .eq("user_id", orcamento.user_id)
           .single();
 
+        const { data: anexosData } = await supabase
+          .from("orcamento_anexos")
+          .select("*")
+          .eq("orcamento_id", id);
+
         const dadosCompletos: DadosImpressao = {
           orcamento: orcamento as unknown as Orcamento,
           cliente: Array.isArray(orcamento.clientes) ? orcamento.clientes[0] : (orcamento.clientes as unknown as Cliente),
           itens: itens as ItemOrcamento[],
-          empresa: empresa as Empresa | null
+          empresa: empresa as Empresa | null,
+          anexos: (anexosData as Anexo[]) || [] 
         };
 
         const blob = await pdf(<OrcamentoPDF dados={dadosCompletos} />).toBlob();

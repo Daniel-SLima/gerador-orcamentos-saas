@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "../lib/supabase"; // Atenção ao caminho! Pode ser ../lib ou ../../lib dependendo da sua pasta
+import { supabase } from "../lib/supabase";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -13,6 +13,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const router = useRouter();
 
+  // =========================================================================
+  // 🧹 FAXINA INTELIGENTE DE ANEXOS TEMPORÁRIOS (DECLARADA ANTES DE SER USADA)
+  // =========================================================================
+  const limparAnexosVencidos = async () => {
+    try {
+      // 🎯 AQUI VOCÊ DEFINE QUANTOS DIAS O ARQUIVO SOBREVIVE:
+      const DIAS_EXPIRACAO = 15; 
+
+      const dataLimite = new Date();
+      dataLimite.setDate(dataLimite.getDate() - DIAS_EXPIRACAO);
+      const dataFormatada = dataLimite.toISOString();
+
+      // 1. Busca os anexos criados antes da data limite
+      const { data: anexosVelhos } = await supabase
+        .from("orcamento_anexos")
+        .select("id, file_path")
+        .lt("created_at", dataFormatada);
+
+      if (anexosVelhos && anexosVelhos.length > 0) {
+        // 2. Apaga o arquivo físico do Storage
+        const paths = anexosVelhos.map(a => a.file_path);
+        await supabase.storage.from("anexos").remove(paths);
+
+        // 3. Apaga o registro da tabela
+        const ids = anexosVelhos.map(a => a.id);
+        await supabase.from("orcamento_anexos").delete().in("id", ids);
+        console.log(`🧹 Faxina concluída: ${anexosVelhos.length} anexos apagados.`);
+      }
+    } catch (error) {
+      console.error("Erro na faxina de anexos:", error);
+    }
+  };
+  // =========================================================================
+
   useEffect(() => {
     const verificarSessao = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -20,6 +54,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         router.replace("/"); 
       } else {
         setIsCheckingAuth(false);
+        // 🚀 RODA A FAXINA ASSIM QUE ENTRA NO SISTEMA (Agora funciona pois a função já existe)
+        limparAnexosVencidos();
       }
     };
     verificarSessao();
