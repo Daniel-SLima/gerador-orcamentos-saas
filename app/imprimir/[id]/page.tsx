@@ -13,7 +13,6 @@ interface Cliente {
   contato_nome: string;
 }
 
-// 1. NOVA INTERFACE: Vendedor
 interface Vendedor {
   nome: string;
   telefone: string;
@@ -37,7 +36,6 @@ interface ItemOrcamento {
   valor_unitario_aplicado: number;
   subtotal: number;
   produtos?: ProdutoJoin | ProdutoJoin[] | null;
-  // 2. NOVOS CAMPOS: Medidas e Descontos
   medidas?: string;
   desconto?: number;
 }
@@ -48,7 +46,6 @@ interface Orcamento {
   valor_total: number;
   observacoes: string;
   user_id: string;
-  // 3. NOVO CAMPO: Vendedor vinculado
   vendedores?: Vendedor | Vendedor[] | null;
 }
 
@@ -71,7 +68,7 @@ const formatarData = (dataStr: string) => {
 };
 
 const styles = StyleSheet.create({
-  page: { paddingTop: 40, paddingBottom: 100, paddingLeft: 40, paddingRight: 40, fontFamily: "Helvetica", backgroundColor: "#ffffff" },
+  page: { paddingTop: 40, paddingBottom: 80, paddingLeft: 40, paddingRight: 40, fontFamily: "Helvetica", backgroundColor: "#ffffff" },
   header: { flexDirection: "row", justifyContent: "space-between", borderBottomWidth: 2, borderBottomColor: "#f3f4f6", borderBottomStyle: "solid", paddingBottom: 20, marginBottom: 30 },
   logoContainer: { width: "55%" },
   logo: { width: 140, height: 60, objectFit: "contain", marginBottom: 10 },
@@ -81,14 +78,8 @@ const styles = StyleSheet.create({
   invoiceTitle: { fontSize: 24, fontWeight: "bold", color: "#2563eb", marginBottom: 10 },
   invoiceDetails: { fontSize: 10, color: "#4b5563", marginBottom: 3 },
 
-  divider: {
-  borderTopWidth: 1.5,
-  borderTopColor: "#e5e7eb",
-  borderTopStyle: "solid",
-  marginVertical: 5
-},
+  divider: { borderTopWidth: 1.5, borderTopColor: "#e5e7eb", borderTopStyle: "solid", marginVertical: 5 },
 
-  
   clientSection: { backgroundColor: "#f9fafb", padding: 15, borderRadius: 6, marginBottom: 30, flexDirection: "row", justifyContent: "space-between" },
   clientTitle: { fontSize: 9, color: "#9ca3af", marginBottom: 8, textTransform: "uppercase", fontWeight: "bold" },
   clientName: { fontSize: 14, fontWeight: "bold", color: "#111827", marginBottom: 4 },
@@ -99,17 +90,13 @@ const styles = StyleSheet.create({
   tableHeaderText: { color: "#ffffff", fontSize: 9, fontWeight: "bold", textAlign: "center" },
   tableRow: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#e5e7eb", borderBottomStyle: "solid", paddingTop: 8, paddingBottom: 8, paddingLeft: 8, paddingRight: 8, alignItems: "center" },
   
-colImg: { width: "10%", alignItems: "center", justifyContent: "center" },
-colDesc: { width: "45%", paddingRight: 5,  justifyContent: "center"},
-colDescHeader: { width: "45%" },
-colQty: { width: "10%", textAlign: "center" },
-colUnit: { width: "15%", textAlign: "right" },
-colTotal: { width: "20%", textAlign: "right", fontWeight: "bold", color: "#111827" },
+  colImg: { width: "10%", alignItems: "center", justifyContent: "center" },
+  colDesc: { width: "45%", paddingRight: 5, justifyContent: "center"},
+  colDescHeader: { width: "45%" },
+  colQty: { width: "10%", textAlign: "center" },
+  colUnit: { width: "15%", textAlign: "right" },
+  colTotal: { width: "20%", textAlign: "right", fontWeight: "bold", color: "#111827" },
 
-
-
-
-  
   tableCell: { fontSize: 9, color: "#374151" },
   itemImage: { width: 35, height: 35, objectFit: "cover", borderRadius: 4 },
   medidasText: { fontSize: 8, color: "#6b7280", marginTop: 3 },
@@ -127,23 +114,23 @@ colTotal: { width: "20%", textAlign: "right", fontWeight: "bold", color: "#11182
   obsTitle: { fontSize: 10, color: "#9ca3af", marginBottom: 5, textTransform: "uppercase" },
   obsText: { fontSize: 10, color: "#4b5563", lineHeight: 1.5, backgroundColor: "#f9fafb", padding: 12, borderRadius: 6 },
   
-  footer: { position: "absolute", bottom: 30, left: 40, right: 40 },
-  footerText: { fontSize: 8, color: "#9ca3af", textAlign: "center", marginBottom: 25 },
-  signaturesContainer: { flexDirection: "row", justifyContent: "space-between" },
+  /* 🚀 SEÇÃO DE ASSINATURAS E RODAPÉ ATUALIZADAS */
+  signaturesContainer: { flexDirection: "row", justifyContent: "space-between", marginTop: 40, marginBottom: 20 },
   signatureBlock: { width: "45%", alignItems: "center" },
   signatureLine: { width: "100%", borderTopWidth: 1, borderTopColor: "#9ca3af", borderTopStyle: "solid", marginBottom: 5 },
   signatureText: { fontSize: 10, fontWeight: "bold", color: "#111827", textAlign: "center" },
-  signatureRole: { fontSize: 8, color: "#6b7280", textAlign: "center" }
+  signatureRole: { fontSize: 8, color: "#6b7280", textAlign: "center" },
+
+  fixedFooterText: { position: "absolute", bottom: 30, left: 0, right: 0, fontSize: 8, color: "#9ca3af", textAlign: "center" },
+  pageNumber: { position: "absolute", bottom: 15, left: 0, right: 0, fontSize: 8, color: "#9ca3af", textAlign: "center" },
+  continueText: { position: "absolute", bottom: 45, right: 40, fontSize: 8, color: "#2563eb", fontWeight: "bold" },
 });
 
-
 const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
-  // Puxa o vendedor garantindo que é um objeto único
   const vendedor = Array.isArray(dados.orcamento.vendedores) 
     ? dados.orcamento.vendedores[0] 
     : dados.orcamento.vendedores;
 
-  // Calcula Totais
   const totalBruto = dados.itens?.reduce((acc, item) => acc + (item.quantidade * item.valor_unitario_aplicado), 0) || 0;
   const totalDescontos = dados.itens?.reduce((acc, item) => acc + Number(item.desconto || 0), 0) || 0;
 
@@ -177,7 +164,6 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
             {dados.cliente?.endereco ? <Text style={styles.clientInfo}>Endereço: {dados.cliente.endereco}</Text> : null}
           </View>
           
-          {/* Lado Direito: Dados do Vendedor */}
           <View style={{ width: '45%', alignItems: 'flex-end' }}>
             <Text style={styles.clientTitle}>Vendedor Responsável:</Text>
             {vendedor ? (
@@ -193,55 +179,54 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
 
         <View style={styles.divider} />
 
-       <View style={styles.table}>
-  <View style={styles.tableHeader}>
-    <View style={styles.colImg}>
-      <Text style={styles.tableHeaderText}>Imagem</Text>
-    </View>
-    <View style={styles.colDescHeader}>
-      <Text style={styles.tableHeaderText}>Descrição do Serviço / Produto</Text>
-    </View>
-    <View style={styles.colQty}>
-      <Text style={styles.tableHeaderText}>Qtd</Text>
-    </View>
-    <View style={styles.colUnit}>
-      <Text style={styles.tableHeaderText}>V. Unit</Text>
-    </View>
-    <View style={styles.colTotal}>
-      <Text style={styles.tableHeaderText}>Subtotal</Text>
-    </View>
-  </View>
+        <View style={styles.table}>
+          <View style={styles.tableHeader} fixed>
+            <View style={styles.colImg}>
+              <Text style={styles.tableHeaderText}>Imagem</Text>
+            </View>
+            <View style={styles.colDescHeader}>
+              <Text style={styles.tableHeaderText}>Descrição do Serviço / Produto</Text>
+            </View>
+            <View style={styles.colQty}>
+              <Text style={styles.tableHeaderText}>Qtd</Text>
+            </View>
+            <View style={styles.colUnit}>
+              <Text style={styles.tableHeaderText}>V. Unit</Text>
+            </View>
+            <View style={styles.colTotal}>
+              <Text style={styles.tableHeaderText}>Subtotal</Text>
+            </View>
+          </View>
 
-  {dados.itens?.map((item: ItemOrcamento, index: number) => {
-    const urlDaImagem = Array.isArray(item.produtos) 
-      ? item.produtos[0]?.imagem_url 
-      : item.produtos?.imagem_url;
+          {dados.itens?.map((item: ItemOrcamento, index: number) => {
+            const urlDaImagem = Array.isArray(item.produtos) 
+              ? item.produtos[0]?.imagem_url 
+              : item.produtos?.imagem_url;
 
-    return (
-      <View style={styles.tableRow} key={index} wrap={false}>
-        <View style={styles.colImg}>
-          {urlDaImagem ? (
-            <PDFImage src={urlDaImagem} style={styles.itemImage} />
-          ) : (
-            <Text style={{ fontSize: 8, color: "#9ca3af" }}>-</Text>
-          )}
+            return (
+              <View style={styles.tableRow} key={index} wrap={false}>
+                <View style={styles.colImg}>
+                  {urlDaImagem ? (
+                    <PDFImage src={urlDaImagem} style={styles.itemImage} />
+                  ) : (
+                    <Text style={{ fontSize: 8, color: "#9ca3af" }}>-</Text>
+                  )}
+                </View>
+
+                <View style={styles.colDesc}>
+                  <Text style={styles.tableCell}>{item.descricao || "Item"}</Text>
+                  {item.medidas ? (
+                    <Text style={styles.medidasText}>Medidas: {item.medidas}</Text>
+                  ) : null}
+                </View>
+
+                <Text style={[styles.colQty, styles.tableCell]}>{String(item.quantidade || 0)}</Text>
+                <Text style={[styles.colUnit, styles.tableCell]}>{formatarMoeda(item.valor_unitario_aplicado)}</Text>
+                <Text style={[styles.colTotal, styles.tableCell]}>{formatarMoeda(item.subtotal)}</Text>
+              </View>
+            );
+          })}
         </View>
-
-        <View style={styles.colDesc}>
-          <Text style={styles.tableCell}>{item.descricao || "Item"}</Text>
-          {item.medidas ? (
-            <Text style={styles.medidasText}>Medidas: {item.medidas}</Text>
-          ) : null}
-        </View>
-
-        <Text style={[styles.colQty, styles.tableCell]}>{String(item.quantidade || 0)}</Text>
-        <Text style={[styles.colUnit, styles.tableCell]}>{formatarMoeda(item.valor_unitario_aplicado)}</Text>
-        <Text style={[styles.colTotal, styles.tableCell]}>{formatarMoeda(item.subtotal)}</Text>
-      </View>
-    );
-  })}
-</View>
-
 
         <View style={styles.totalSection} wrap={false}>
           <View style={styles.totalBox}>
@@ -273,24 +258,35 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
           </View>
         ) : null}
 
-        <View style={styles.footer} fixed>
-          <Text style={styles.footerText}>Este documento tem validade de 15 dias a partir da data de emissão.</Text>
-          
-          {/* Assinaturas Duplas Lado a Lado */}
-          <View style={styles.signaturesContainer}>
-            <View style={styles.signatureBlock}>
-              <View style={styles.signatureLine} />
-              <Text style={styles.signatureText}>{dados.empresa?.nome_fantasia || "Assinatura Comercial"}</Text>
-              <Text style={styles.signatureRole}>Departamento de Vendas</Text>
-            </View>
+        {/* 🚀 Bloco de Assinaturas (Não é mais 'fixed', só aparece no fim de tudo) */}
+        <View style={styles.signaturesContainer} wrap={false}>
+          <View style={styles.signatureBlock}>
+            <View style={styles.signatureLine} />
+            <Text style={styles.signatureText}>{dados.empresa?.nome_fantasia || "Assinatura Comercial"}</Text>
+            <Text style={styles.signatureRole}>Departamento de Vendas</Text>
+          </View>
 
-            <View style={styles.signatureBlock}>
-              <View style={styles.signatureLine} />
-              <Text style={styles.signatureText}>{dados.cliente?.nome_razao_social || "Assinatura do Cliente"}</Text>
-              <Text style={styles.signatureRole}>De acordo com os termos</Text>
-            </View>
+          <View style={styles.signatureBlock}>
+            <View style={styles.signatureLine} />
+            <Text style={styles.signatureText}>{dados.cliente?.nome_razao_social || "Assinatura do Cliente"}</Text>
+            <Text style={styles.signatureRole}>De acordo com os termos</Text>
           </View>
         </View>
+
+        {/* 🚀 RODAPÉ FIXO MÁGICO (Aparece em todas as páginas e verifica continuação) */}
+        <Text style={styles.fixedFooterText} fixed>
+          Este documento tem validade de 15 dias a partir da data de emissão.
+        </Text>
+        
+        {/* Aviso de Continuação */}
+        <Text render={({ pageNumber, totalPages }) => (
+          pageNumber < totalPages ? "CONTINUA NA PRÓXIMA PÁGINA" : ""
+        )} fixed style={styles.continueText} />
+
+        {/* Número da Página */}
+        <Text render={({ pageNumber, totalPages }) => (
+          `Página ${pageNumber} de ${totalPages}`
+        )} fixed style={styles.pageNumber} />
 
       </Page>
     </Document>
@@ -308,7 +304,6 @@ export default function ImprimirOrcamento() {
   useEffect(() => {
     const processarPDF = async () => {
       try {
-        // Ensinamos a busca a trazer também os dados do Vendedor
         const { data: orcamento, error: erroOrc } = await supabase
           .from("orcamentos")
           .select(`

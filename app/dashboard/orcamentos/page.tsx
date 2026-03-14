@@ -252,14 +252,7 @@ function FormularioOrcamento() {
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
       
-      {/* 🚀 CABEÇALHO COM A LOGO NO LUGAR DO NOME */}
-      <div className="flex justify-start items-center border-b border-gray-100 pb-4 mb-8">
-        <div className="max-w-[180px]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo_sane_completa.png" alt="SANE" className="w-full h-auto object-contain" />
-        </div>
-      </div>
-
+      
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-1">
           {editId ? "✏️ Editando Orçamento" : cloneId ? "📋 Duplicando Orçamento" : "Novo Orçamento"}
