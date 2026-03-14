@@ -11,6 +11,20 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
+  // 🚀 FUNÇÃO PARA TRADUZIR OS ERROS DO SUPABASE
+  const traduzirErro = (mensagem: string) => {
+    if (mensagem.includes("Invalid login credentials")) {
+      return "E-mail ou senha incorretos.";
+    }
+    if (mensagem.includes("Password should be at least 6 characters")) {
+      return "A senha deve ter pelo menos 6 caracteres.";
+    }
+    if (mensagem.includes("User already registered")) {
+      return "Este e-mail já está cadastrado.";
+    }
+    return "Ocorreu um erro inesperado. Tente novamente."; // Erro genérico de segurança
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -19,7 +33,8 @@ export default function Login() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      setMessage("Erro: " + error.message);
+      // Usando o tradutor aqui
+      setMessage("Erro: " + traduzirErro(error.message));
     } else {
       setMessage("Login realizado com sucesso! Redirecionando...");
       router.push("/dashboard");
@@ -34,7 +49,8 @@ export default function Login() {
     const { error } = await supabase.auth.signUp({ email, password });
 
     if (error) {
-      setMessage("Erro: " + error.message);
+      // Usando o tradutor aqui também
+      setMessage("Erro: " + traduzirErro(error.message));
     } else {
       setMessage("Conta criada! Você já pode fazer login.");
     }
@@ -45,7 +61,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 border border-gray-100">
         
-        {/* 🚀 LOGO ADICIONADA AQUI NO LUGAR DO TEXTO */}
+        {/* LOGO */}
         <div className="text-center mb-8 flex flex-col items-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img 
@@ -82,7 +98,7 @@ export default function Login() {
           </div>
 
           {message && (
-            <div className={`p-3 rounded-lg text-sm ${message.includes("Erro") ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
+            <div className={`p-3 rounded-lg text-sm font-medium border ${message.includes("Erro") ? "bg-red-50 text-red-600 border-red-100" : "bg-green-50 text-green-700 border-green-100"}`}>
               {message}
             </div>
           )}
@@ -90,7 +106,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
           >
             {loading ? "Carregando..." : "Entrar"}
           </button>
@@ -99,7 +115,7 @@ export default function Login() {
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600">
             Ainda não tem uma conta?{" "}
-            <button onClick={handleSignUp} type="button" className="text-blue-600 hover:underline font-semibold">
+            <button onClick={handleSignUp} type="button" className="text-blue-600 hover:underline font-semibold transition-colors">
               Criar agora
             </button>
           </p>

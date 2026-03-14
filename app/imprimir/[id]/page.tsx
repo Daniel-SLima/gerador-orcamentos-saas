@@ -5,12 +5,17 @@ import { useParams, useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import { Document, Page, Text, View, StyleSheet, Image as PDFImage, pdf } from "@react-pdf/renderer";
 
+// 🚀 1. ATUALIZANDO AS INTERFACES PARA RECEBER OS NOVOS CAMPOS
 interface Cliente {
   nome_razao_social: string;
   cpf_cnpj: string;
   telefone: string;
-  endereco: string;
   contato_nome: string;
+  endereco?: string; // Campo antigo (Plano B)
+  rua_numero?: string;
+  bairro?: string;
+  cidade?: string;
+  uf?: string;
 }
 
 interface Vendedor {
@@ -22,8 +27,12 @@ interface Empresa {
   nome_fantasia: string;
   cnpj: string;
   telefone: string;
-  endereco_completo: string;
   logo_url: string;
+  endereco_completo?: string; // Campo antigo (Plano B)
+  rua_numero?: string;
+  bairro?: string;
+  cidade?: string;
+  uf?: string;
 }
 
 interface ProdutoJoin {
@@ -65,6 +74,34 @@ const formatarData = (dataStr: string) => {
   const data = new Date(dataStr);
   data.setMinutes(data.getMinutes() + data.getTimezoneOffset());
   return new Intl.DateTimeFormat('pt-BR').format(data);
+};
+
+// 🚀 2. FUNÇÃO INTELIGENTE PARA MONTAR O ENDEREÇO
+const montarEnderecoLinhas = (
+  rua?: string,
+  bairro?: string,
+  cidade?: string,
+  uf?: string,
+  fallbackAntigo?: string
+) => {
+  if (rua || bairro || cidade || uf) {
+    const linha1 = rua || "";
+
+    let linha2 = "";
+    if (bairro) linha2 += bairro;
+    if (cidade) linha2 += linha2 ? ` - ${cidade}` : cidade;
+    if (uf) linha2 += cidade ? `/${uf}` : uf;
+
+    return {
+      linha1,
+      linha2
+    };
+  }
+
+  return {
+    linha1: fallbackAntigo || "",
+    linha2: ""
+  };
 };
 
 const styles = StyleSheet.create({
@@ -114,7 +151,6 @@ const styles = StyleSheet.create({
   obsTitle: { fontSize: 10, color: "#9ca3af", marginBottom: 5, textTransform: "uppercase" },
   obsText: { fontSize: 10, color: "#4b5563", lineHeight: 1.5, backgroundColor: "#f9fafb", padding: 12, borderRadius: 6 },
   
-  /* 🚀 SEÇÃO DE ASSINATURAS E RODAPÉ ATUALIZADAS */
   signaturesContainer: { flexDirection: "row", justifyContent: "space-between", marginTop: 40, marginBottom: 20 },
   signatureBlock: { width: "45%", alignItems: "center" },
   signatureLine: { width: "100%", borderTopWidth: 1, borderTopColor: "#9ca3af", borderTopStyle: "solid", marginBottom: 5 },
@@ -134,6 +170,23 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
   const totalBruto = dados.itens?.reduce((acc, item) => acc + (item.quantidade * item.valor_unitario_aplicado), 0) || 0;
   const totalDescontos = dados.itens?.reduce((acc, item) => acc + Number(item.desconto || 0), 0) || 0;
 
+  // 🚀 3. PREPARANDO OS ENDEREÇOS COM A NOSSA FUNÇÃO INTELIGENTE
+  const enderecoEmpresa = montarEnderecoLinhas(
+  dados.empresa?.rua_numero,
+  dados.empresa?.bairro,
+  dados.empresa?.cidade,
+  dados.empresa?.uf,
+  dados.empresa?.endereco_completo
+);
+
+const enderecoCliente = montarEnderecoLinhas(
+  dados.cliente?.rua_numero,
+  dados.cliente?.bairro,
+  dados.cliente?.cidade,
+  dados.cliente?.uf,
+  dados.cliente?.endereco
+);
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
@@ -143,7 +196,9 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
             <Text style={styles.companyName}>{dados.empresa?.nome_fantasia || "EMPRESA NÃO INFORMADA"}</Text>
             {dados.empresa?.cnpj ? <Text style={styles.companyText}>CNPJ: {dados.empresa.cnpj}</Text> : null}
             {dados.empresa?.telefone ? <Text style={styles.companyText}>Tel: {dados.empresa.telefone}</Text> : null}
-            {dados.empresa?.endereco_completo ? <Text style={styles.companyText}>{dados.empresa.endereco_completo}</Text> : null}
+            {/* 🚀 IMPRIMINDO O ENDEREÇO DA EMPRESA */}
+            {enderecoEmpresa.linha1 ? <Text style={styles.companyText}>{enderecoEmpresa.linha1}</Text> : null}
+            {enderecoEmpresa.linha2 ? <Text style={styles.companyText}>{enderecoEmpresa.linha2}</Text> : null}
           </View>
           <View style={styles.invoiceTitleBlock}>
             <Text style={styles.invoiceTitle}>ORÇAMENTO</Text>
@@ -161,7 +216,14 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
             {dados.cliente?.contato_nome ? <Text style={styles.clientInfo}>Contato: {dados.cliente.contato_nome}</Text> : null}
             {dados.cliente?.cpf_cnpj ? <Text style={styles.clientInfo}>CPF/CNPJ: {dados.cliente.cpf_cnpj}</Text> : null}
             {dados.cliente?.telefone ? <Text style={styles.clientInfo}>Telefone: {dados.cliente.telefone}</Text> : null}
-            {dados.cliente?.endereco ? <Text style={styles.clientInfo}>Endereço: {dados.cliente.endereco}</Text> : null}
+            {/* 🚀 IMPRIMINDO O ENDEREÇO DO CLIENTE */}
+            {enderecoCliente.linha1 ? (
+  <Text style={styles.clientInfo}>Endereço: {enderecoCliente.linha1}</Text>
+) : null}
+
+{enderecoCliente.linha2 ? (
+  <Text style={styles.clientInfo}>{enderecoCliente.linha2}</Text>
+) : null}
           </View>
           
           <View style={{ width: '45%', alignItems: 'flex-end' }}>
@@ -258,7 +320,6 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
           </View>
         ) : null}
 
-        {/* 🚀 Bloco de Assinaturas (Não é mais 'fixed', só aparece no fim de tudo) */}
         <View style={styles.signaturesContainer} wrap={false}>
           <View style={styles.signatureBlock}>
             <View style={styles.signatureLine} />
@@ -273,17 +334,14 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
           </View>
         </View>
 
-        {/* 🚀 RODAPÉ FIXO MÁGICO (Aparece em todas as páginas e verifica continuação) */}
         <Text style={styles.fixedFooterText} fixed>
           Este documento tem validade de 15 dias a partir da data de emissão.
         </Text>
         
-        {/* Aviso de Continuação */}
         <Text render={({ pageNumber, totalPages }) => (
-          pageNumber < totalPages ? "CONTINUA NA PRÓXIMA PÁGINA" : ""
+          pageNumber < totalPages ? "CONTINUA NA PRÓXIMA PÁGINA ➔" : ""
         )} fixed style={styles.continueText} />
 
-        {/* Número da Página */}
         <Text render={({ pageNumber, totalPages }) => (
           `Página ${pageNumber} de ${totalPages}`
         )} fixed style={styles.pageNumber} />
@@ -304,11 +362,12 @@ export default function ImprimirOrcamento() {
   useEffect(() => {
     const processarPDF = async () => {
       try {
+        // 🚀 4. AVISANDO O SUPABASE PARA TRAZER AS COLUNAS NOVAS DO CLIENTE
         const { data: orcamento, error: erroOrc } = await supabase
           .from("orcamentos")
           .select(`
             *, 
-            clientes ( nome_razao_social, cpf_cnpj, telefone, endereco, contato_nome ),
+            clientes ( nome_razao_social, cpf_cnpj, telefone, endereco, contato_nome, rua_numero, bairro, cidade, uf ),
             vendedores ( nome, telefone )
           `)
           .eq("id", id)
