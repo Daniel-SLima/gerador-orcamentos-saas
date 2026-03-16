@@ -59,6 +59,10 @@ function FormularioOrcamento() {
   const [dataEmissao, setDataEmissao] = useState(obterDataAtualBrasil());
   const [clienteId, setClienteId] = useState("");
   const [vendedorId, setVendedorId] = useState("");
+  
+  // 🚀 ADICIONADOS OS DOIS NOVOS ESTADOS AQUI
+  const [prazo, setPrazo] = useState("");
+  const [formaPagamento, setFormaPagamento] = useState("");
   const [observacoes, setObservacoes] = useState("");
 
   const [produtoId, setProdutoId] = useState("");
@@ -109,6 +113,10 @@ function FormularioOrcamento() {
         if (orcData) {
           setClienteId(orcData.cliente_id || "");
           setVendedorId(orcData.vendedor_id || "");
+          
+          // 🚀 PUXANDO OS DADOS NOVOS DO BANCO
+          setPrazo(orcData.prazo || "");
+          setFormaPagamento(orcData.forma_pagamento || "");
           setObservacoes(orcData.observacoes || "");
           
           if (orcData.data_emissao) {
@@ -245,11 +253,14 @@ function FormularioOrcamento() {
 
       let idFinal = "";
 
+      // 🚀 SALVANDO OS NOVOS CAMPOS NO BANCO
       if (editId) {
         const { error: erroOrc } = await supabase.from("orcamentos").update({
           cliente_id: clienteId, 
           vendedor_id: vendedorId || null, 
           valor_total: valorTotalOrcamento, 
+          prazo: prazo,
+          forma_pagamento: formaPagamento,
           observacoes: observacoes,
           data_emissao: dataEmissao 
         }).eq("id", editId).eq("user_id", user.id);
@@ -263,6 +274,8 @@ function FormularioOrcamento() {
           cliente_id: clienteId, 
           vendedor_id: vendedorId || null, 
           valor_total: valorTotalOrcamento, 
+          prazo: prazo,
+          forma_pagamento: formaPagamento,
           observacoes: observacoes, 
           status: "Rascunho",
           data_emissao: dataEmissao
@@ -399,6 +412,7 @@ function FormularioOrcamento() {
 
       {itens.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          {/* MOBILE VIEW MANTIDA INTACTA */}
           <div className="block md:hidden divide-y divide-gray-100">
             {itens.map((item, index) => (
               <div key={index} className="p-4 bg-gray-50/30">
@@ -451,7 +465,18 @@ function FormularioOrcamento() {
                     </td>
                     <td className="py-3 px-4 text-center text-gray-600 font-medium">{item.quantidade}</td>
                     <td className="py-3 px-4 text-right text-gray-600">{formatarMoeda(item.valor_unitario)}</td>
-                    <td className="py-3 px-4 text-right text-red-500 font-medium">{item.desconto > 0 ? `- ${formatarMoeda(item.desconto)}` : "-"}</td>
+                    
+                    {/* 🚀 AQUI ESTÁ A CORREÇÃO DO BUG NO DESKTOP */}
+                    <td className="py-3 px-4 text-right">
+                      {item.desconto > 0 ? (
+                        <div className="inline-flex flex-col items-end">
+                          <span className="text-red-500 font-medium whitespace-nowrap">- {formatarMoeda(item.desconto)}</span>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+
                     <td className="py-3 px-4 text-right text-gray-900 font-bold">{formatarMoeda(item.subtotal)}</td>
                     <td className="py-3 px-4 text-center">
                       <div className="flex items-center justify-center gap-2">
@@ -471,12 +496,23 @@ function FormularioOrcamento() {
           
           <div className="bg-gray-50 p-6 border-t border-gray-200 flex flex-col md:flex-row justify-between items-start gap-6">
             <div className="w-full md:w-1/2 space-y-4">
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Prazo</label>
+                  <textarea rows={2} value={prazo} onChange={e => setPrazo(e.target.value)} placeholder="Ex: 15 dias úteis" className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Forma de Pagamento</label>
+                  <textarea rows={2} value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} placeholder="Ex: 50% entrada, 50% entrega" className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Observações do Orçamento</label>
                 <textarea value={observacoes} onChange={e => setObservacoes(e.target.value)} rows={3} className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
               </div>
               
-              {/* 🚀 BLOCO DE ANEXOS */}
               <div className="p-4 border-2 border-dashed border-gray-200 rounded-xl bg-white">
                 <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">📎 Anexos Opcionais (Válidos por 15 dias)</label>
                 <input type="file" ref={fileInputRef} multiple accept="image/*,.pdf" onChange={handleFileChange} className="hidden" />
@@ -487,7 +523,6 @@ function FormularioOrcamento() {
                   + Adicionar Foto ou PDF
                 </button>
                 
-                {/* 🚀 EXIBE OS ANEXOS QUE JÁ ESTÃO NO BANCO (MUDAM DE COR PARA DIFERENCIAR) */}
                 {anexosSalvos.length > 0 && (
                   <ul className="mt-3 space-y-2 mb-3">
                     {anexosSalvos.map((anexo) => (
@@ -501,7 +536,6 @@ function FormularioOrcamento() {
                   </ul>
                 )}
 
-                {/* EXIBE OS ARQUIVOS NOVOS QUE AINDA VÃO SUBIR */}
                 {arquivosAnexos.length > 0 && (
                   <ul className="mt-3 space-y-2">
                     {arquivosAnexos.map((file, i) => (

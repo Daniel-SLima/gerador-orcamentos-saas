@@ -55,6 +55,9 @@ interface Orcamento {
   observacoes: string;
   user_id: string;
   vendedores?: Vendedor | Vendedor[] | null;
+  // 🚀 ADICIONADO: Novos campos que vêm do banco
+  prazo?: string;
+  forma_pagamento?: string;
 }
 
 interface Anexo {
@@ -101,41 +104,48 @@ const montarEnderecoLinhas = (
 };
 
 const styles = StyleSheet.create({
-  page: { paddingTop: 40, paddingBottom: 80, paddingLeft: 40, paddingRight: 40, fontFamily: "Helvetica", backgroundColor: "#ffffff" },
-  header: { flexDirection: "row", justifyContent: "space-between", borderBottomWidth: 2, borderBottomColor: "#f3f4f6", borderBottomStyle: "solid", paddingBottom: 20, marginBottom: 30 },
+  page: { paddingTop: 30, paddingBottom: 60, paddingLeft: 40, paddingRight: 40, fontFamily: "Helvetica", backgroundColor: "#ffffff" },
+  
+  header: { flexDirection: "row", justifyContent: "space-between", borderBottomWidth: 1.5, borderBottomColor: "#9ca3af", borderBottomStyle: "solid", paddingBottom: 15, marginBottom: 15 },
+  
   logoContainer: { width: "55%" },
-  logo: { width: 140, height: 60, objectFit: "contain", marginBottom: 10 },
-  companyName: { fontSize: 14, fontWeight: "bold", color: "#111827", marginBottom: 4, textTransform: "uppercase" },
-  companyText: { fontSize: 9, color: "#4b5563", marginBottom: 2 },
+  logo: { width: 150, height: 60, objectFit: "contain", marginBottom: 4 }, 
+  
+  companyTextWrapper: { paddingLeft: 12 },
+  companyText: { fontSize: 9, color: "#374151", marginBottom: 1 }, 
+  
   invoiceTitleBlock: { width: "45%", alignItems: "flex-end" },
-  invoiceTitle: { fontSize: 24, fontWeight: "bold", color: "#2563eb", marginBottom: 10 },
+  invoiceTitle: { fontSize: 24, fontWeight: "bold", color: "#2563eb", marginBottom: 8 },
   invoiceDetails: { fontSize: 10, color: "#4b5563", marginBottom: 3 },
 
-  divider: { borderTopWidth: 1.5, borderTopColor: "#e5e7eb", borderTopStyle: "solid", marginVertical: 5 },
+  divider: { borderTopWidth: 1, borderTopColor: "#d1d5db", borderTopStyle: "solid", marginVertical: 5 },
 
-  clientSection: { backgroundColor: "#f9fafb", padding: 15, borderRadius: 6, marginBottom: 30, flexDirection: "row", justifyContent: "space-between" },
-  clientTitle: { fontSize: 9, color: "#9ca3af", marginBottom: 8, textTransform: "uppercase", fontWeight: "bold" },
-  clientName: { fontSize: 14, fontWeight: "bold", color: "#111827", marginBottom: 4 },
-  clientInfo: { fontSize: 10, color: "#4b5563", marginBottom: 3 },
+  clientSection: { backgroundColor: "#f9fafb", padding: 12, borderRadius: 6, marginBottom: 20 },
+  clientTitle: { fontSize: 9, color: "#9ca3af", marginBottom: 6, textTransform: "uppercase", fontWeight: "bold" },
+  clientName: { fontSize: 14, fontWeight: "bold", color: "#111827", marginBottom: 8 },
   
-  table: { width: "100%", marginBottom: 30 },
+  clientGridRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 4 },
+  clientGridCol: { width: "48%", fontSize: 10, color: "#4b5563" },
+  clientLabel: { fontWeight: "bold", color: "#374151" },
+  
+  table: { width: "100%", marginBottom: 25 },
   tableHeader: { flexDirection: "row", backgroundColor: "#2563eb", padding: 8, borderTopLeftRadius: 4, borderTopRightRadius: 4, alignItems: "center" },
   tableHeaderText: { color: "#ffffff", fontSize: 9, fontWeight: "bold", textAlign: "center" },
   tableRow: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#e5e7eb", borderBottomStyle: "solid", paddingTop: 8, paddingBottom: 8, paddingLeft: 8, paddingRight: 8, alignItems: "center" },
   
-  colImg: { width: "10%", alignItems: "center", justifyContent: "center" },
-  colDesc: { width: "45%", paddingRight: 5, justifyContent: "center"},
-  colDescHeader: { width: "45%" },
+  colImg: { width: "15%", alignItems: "center", justifyContent: "center" },
+  colDesc: { width: "40%", paddingRight: 5, justifyContent: "center"},
+  colDescHeader: { width: "40%" },
   colQty: { width: "10%", textAlign: "center" },
   colUnit: { width: "15%", textAlign: "right" },
   colTotal: { width: "20%", textAlign: "right", fontWeight: "bold", color: "#111827" },
 
   tableCell: { fontSize: 9, color: "#374151" },
-  itemImage: { width: 35, height: 35, objectFit: "cover", borderRadius: 4 },
+  itemImage: { width: 50, height: 50, objectFit: "contain", borderRadius: 4 },
   medidasText: { fontSize: 8, color: "#6b7280", marginTop: 3 },
 
-  totalSection: { flexDirection: "row", justifyContent: "flex-end", marginBottom: 30 },
-  totalBox: { backgroundColor: "#f9fafb", padding: 15, borderRadius: 6, borderLeftWidth: 4, borderLeftColor: "#2563eb", borderLeftStyle: "solid", width: "50%" },
+  totalSection: { flexDirection: "row", justifyContent: "flex-end", marginBottom: 20 },
+  totalBox: { backgroundColor: "#f9fafb", padding: 12, borderRadius: 6, borderLeftWidth: 4, borderLeftColor: "#2563eb", borderLeftStyle: "solid", width: "50%" },
   totalRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 5 },
   totalTextNormal: { fontSize: 10, color: "#4b5563" },
   totalTextDiscount: { fontSize: 10, color: "#ef4444" },
@@ -143,25 +153,52 @@ const styles = StyleSheet.create({
   totalTextFinal: { fontSize: 11, color: "#6b7280", fontWeight: "bold", textTransform: "uppercase" },
   totalValueFinal: { fontSize: 16, fontWeight: "bold", color: "#111827", textAlign: "right" },
   
+  // 🚀 ADICIONADO: Estilos para o bloco de Prazo e Forma de Pagamento
+  infoSection: { marginBottom: 15 },
+  infoRow: { flexDirection: "row", marginBottom: 4 },
+  infoLabel: { fontSize: 10, fontWeight: "bold", color: "#6b7280", width: 130 },
+  infoValue: { fontSize: 10, color: "#4b5563", flex: 1 },
+
   obsSection: { marginBottom: 20 },
-  obsTitle: { fontSize: 10, color: "#9ca3af", marginBottom: 5, textTransform: "uppercase" },
-  obsText: { fontSize: 10, color: "#4b5563", lineHeight: 1.5, backgroundColor: "#f9fafb", padding: 12, borderRadius: 6 },
+  obsTitle: { fontSize: 10, color: "#9ca3af", marginBottom:1, textTransform: "uppercase" },
+  obsText: { fontSize: 10, color: "#4b5563", lineHeight: 1.5, backgroundColor: "#f9fafb", padding: 6, borderRadius: 6 },
   
-  anexosSection: { backgroundColor: "#eff6ff", padding: 12, borderRadius: 6, borderLeftWidth: 4, borderLeftColor: "#3b82f6", borderLeftStyle: "solid", marginBottom: 30 },
+  anexosSection: { backgroundColor: "#eff6ff", padding: 12, borderRadius: 6, borderLeftWidth: 4, borderLeftColor: "#3b82f6", borderLeftStyle: "solid", marginBottom: 20 },
   anexosTitle: { fontSize: 10, color: "#1e3a8a", fontWeight: "bold", textTransform: "uppercase", marginBottom: 6 },
   anexosLink: { fontSize: 9, color: "#2563eb", textDecoration: "underline", marginBottom: 4 },
   anexosWarning: { fontSize: 8, color: "#60a5fa", marginTop: 6 },
 
-  signaturesContainer: { flexDirection: "row", justifyContent: "space-between", marginTop: 40, marginBottom: 20 },
+  signaturesContainer: { flexDirection: "row", justifyContent: "space-between", marginTop: 30, marginBottom: 10 },
   signatureBlock: { width: "45%", alignItems: "center" },
   signatureLine: { width: "100%", borderTopWidth: 1, borderTopColor: "#9ca3af", borderTopStyle: "solid", marginBottom: 5 },
-  signatureText: { fontSize: 10, fontWeight: "bold", color: "#111827", textAlign: "center" },
+  signatureText: { fontSize: 10, fontWeight: "bold", color: "#111827", textAlign: "center", textTransform: "uppercase" },
   signatureRole: { fontSize: 8, color: "#6b7280", textAlign: "center" },
 
-  fixedFooterText: { position: "absolute", bottom: 30, left: 0, right: 0, fontSize: 8, color: "#9ca3af", textAlign: "center" },
-  pageNumber: { position: "absolute", bottom: 15, left: 0, right: 0, fontSize: 8, color: "#9ca3af", textAlign: "center" },
-  continueText: { position: "absolute", bottom: 45, right: 40, fontSize: 8, color: "#2563eb", fontWeight: "bold" },
+  termsBlock: { marginTop: 15, padding: 12, backgroundColor: "#f9fafb", borderRadius: 6 },
+  termTitle: { fontSize: 9, color: "#9ca3af", fontWeight: "bold", textTransform: "uppercase", marginBottom: 6 },
+  termLine: { fontSize: 9, color: "#4b5563", marginBottom: 3 },
+
+  fixedFooterText: { position: "absolute", bottom: 25, left: 0, right: 0, fontSize: 8, color: "#9ca3af", textAlign: "center" },
+  pageNumber: { position: "absolute", bottom: 12, left: 0, right: 0, fontSize: 8, color: "#9ca3af", textAlign: "center" },
+  continueText: { position: "absolute", bottom: 35, right: 40, fontSize: 8, color: "#2563eb", fontWeight: "bold" },
 });
+
+const BlocoAssinaturas = ({ dados }: { dados: DadosImpressao }) => (
+  <View wrap={false}>
+    <View style={styles.signaturesContainer}>
+      <View style={styles.signatureBlock}>
+        <View style={styles.signatureLine} />
+        <Text style={styles.signatureText}>{dados.empresa?.nome_fantasia || "Assinatura Comercial"}</Text>
+        <Text style={styles.signatureRole}>Departamento de Vendas</Text>
+      </View>
+      <View style={styles.signatureBlock}>
+        <View style={styles.signatureLine} />
+        <Text style={styles.signatureText}>{dados.cliente?.nome_razao_social || "Assinatura do Cliente"}</Text>
+        <Text style={styles.signatureRole}>De acordo com os termos</Text>
+      </View>
+    </View>
+  </View>
+);
 
 const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
   const vendedor = Array.isArray(dados.orcamento.vendedores) 
@@ -187,52 +224,58 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
     dados.cliente?.endereco
   );
 
+  const imagensAnexas = dados.anexos?.filter(a => a.file_url.match(/\.(jpeg|jpg|png|webp)$/i)) || [];
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
           <View style={styles.logoContainer}>
             {dados.empresa?.logo_url ? <PDFImage src={dados.empresa.logo_url} style={styles.logo} /> : null}
-            <Text style={styles.companyName}>{dados.empresa?.nome_fantasia || "EMPRESA NÃO INFORMADA"}</Text>
-            {dados.empresa?.cnpj ? <Text style={styles.companyText}>CNPJ: {dados.empresa.cnpj}</Text> : null}
-            {dados.empresa?.telefone ? <Text style={styles.companyText}>Tel: {dados.empresa.telefone}</Text> : null}
-            {enderecoEmpresa.linha1 ? <Text style={styles.companyText}>{enderecoEmpresa.linha1}</Text> : null}
-            {enderecoEmpresa.linha2 ? <Text style={styles.companyText}>{enderecoEmpresa.linha2}</Text> : null}
+            
+            <View style={styles.companyTextWrapper}>
+              {dados.empresa?.cnpj ? <Text style={styles.companyText}>CNPJ: {dados.empresa.cnpj}</Text> : null}
+              {dados.empresa?.telefone ? <Text style={styles.companyText}>Tel: {dados.empresa.telefone}</Text> : null}
+              {enderecoEmpresa.linha1 ? <Text style={styles.companyText}>{enderecoEmpresa.linha1}</Text> : null}
+              {enderecoEmpresa.linha2 ? <Text style={styles.companyText}>{enderecoEmpresa.linha2}</Text> : null}
+            </View>
           </View>
+          
           <View style={styles.invoiceTitleBlock}>
             <Text style={styles.invoiceTitle}>ORÇAMENTO</Text>
             <Text style={styles.invoiceDetails}>Nº: {String(dados.orcamento.numero_orcamento || 0).padStart(5, '0')}</Text>
             <Text style={styles.invoiceDetails}>Emissão: {formatarData(dados.orcamento.data_emissao)}</Text>
+            
+            {vendedor ? (
+              <Text style={[styles.invoiceDetails, { marginTop: 4 }]}>Vendedor: {vendedor.nome}</Text>
+            ) : null}
+            {vendedor?.telefone ? (
+              <Text style={styles.invoiceDetails}>Tel: {vendedor.telefone}</Text>
+            ) : null}
           </View>
         </View>
-
-        <View style={styles.divider} />
 
         <View style={styles.clientSection}>
-          <View style={{ width: '55%' }}>
-            <Text style={styles.clientTitle}>Preparado Para:</Text>
-            <Text style={styles.clientName}>{dados.cliente?.nome_razao_social || "Cliente"}</Text>
-            {dados.cliente?.contato_nome ? <Text style={styles.clientInfo}>Contato: {dados.cliente.contato_nome}</Text> : null}
-            {dados.cliente?.cpf_cnpj ? <Text style={styles.clientInfo}>CPF/CNPJ: {dados.cliente.cpf_cnpj}</Text> : null}
-            {dados.cliente?.telefone ? <Text style={styles.clientInfo}>Telefone: {dados.cliente.telefone}</Text> : null}
-            {enderecoCliente.linha1 ? <Text style={styles.clientInfo}>Endereço: {enderecoCliente.linha1}</Text> : null}
-            {enderecoCliente.linha2 ? <Text style={styles.clientInfo}>{enderecoCliente.linha2}</Text> : null}
+          <Text style={styles.clientTitle}>Preparado Para:</Text>
+          <Text style={styles.clientName}>{dados.cliente?.nome_razao_social || "Cliente"}</Text>
+          
+          <View style={styles.clientGridRow}>
+            <Text style={styles.clientGridCol}><Text style={styles.clientLabel}>CNPJ/CPF: </Text>{dados.cliente?.cpf_cnpj || "-"}</Text>
+            <Text style={styles.clientGridCol}><Text style={styles.clientLabel}>Contato: </Text>{dados.cliente?.contato_nome || "-"}</Text>
           </View>
           
-          <View style={{ width: '45%', alignItems: 'flex-end' }}>
-            <Text style={styles.clientTitle}>Vendedor Responsável:</Text>
-            {vendedor ? (
-              <>
-                <Text style={styles.clientName}>{vendedor.nome}</Text>
-                {vendedor.telefone ? <Text style={styles.clientInfo}>Tel: {vendedor.telefone}</Text> : null}
-              </>
-            ) : (
-              <Text style={styles.clientInfo}>Não informado</Text>
-            )}
+          <View style={styles.clientGridRow}>
+            <Text style={styles.clientGridCol}><Text style={styles.clientLabel}>Telefone: </Text>{dados.cliente?.telefone || "-"}</Text>
+            <Text style={styles.clientGridCol}></Text>
+          </View>
+
+          <View style={[styles.clientGridRow]}>
+            <Text style={{ fontSize: 10, color: "#4b5563", width: "100%" }}>
+              <Text style={styles.clientLabel}>Endereço: </Text>
+              {enderecoCliente.linha1} {enderecoCliente.linha2 ? ` - ${enderecoCliente.linha2}` : ""}
+            </Text>
           </View>
         </View>
-
-        <View style={styles.divider} />
 
         <View style={styles.table}>
           <View style={styles.tableHeader} fixed>
@@ -268,17 +311,34 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
               <Text style={styles.totalTextNormal}>Subtotal Bruto:</Text>
               <Text style={styles.totalTextNormal}>{formatarMoeda(totalBruto)}</Text>
             </View>
+            
+            <View style={styles.totalDivider} />
+            <View style={[styles.totalRow, { marginTop: 5, alignItems: "center" }]}>
+              <Text style={styles.totalTextFinal}>Valor Total</Text>
+              <Text style={styles.totalValueFinal}>{formatarMoeda(dados.orcamento.valor_total)}</Text>
+            </View>
             {totalDescontos > 0 && (
               <View style={styles.totalRow}>
                 <Text style={styles.totalTextDiscount}>Descontos Aplicados:</Text>
                 <Text style={styles.totalTextDiscount}>- {formatarMoeda(totalDescontos)}</Text>
               </View>
             )}
-            <View style={styles.totalDivider} />
-            <View style={[styles.totalRow, { marginTop: 5, alignItems: "center" }]}>
-              <Text style={styles.totalTextFinal}>Valor Total</Text>
-              <Text style={styles.totalValueFinal}>{formatarMoeda(dados.orcamento.valor_total)}</Text>
-            </View>
+            {(dados.orcamento.prazo || dados.orcamento.forma_pagamento) ? (
+          <View style={styles.infoSection} wrap={false}>
+            {dados.orcamento.prazo ? (
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Prazo:</Text>
+                <Text style={styles.infoValue}>{dados.orcamento.prazo}</Text>
+              </View>
+            ) : null}
+            {dados.orcamento.forma_pagamento ? (
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Forma de Pagamento:</Text>
+                <Text style={styles.infoValue}>{dados.orcamento.forma_pagamento}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
           </View>
         </View>
 
@@ -288,11 +348,17 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
             <Text style={styles.obsText}>{dados.orcamento.observacoes}</Text>
           </View>
         ) : null}
+        <View style={styles.obsSection}>
+      <Text style={styles.obsTitle}>Informações Importantes:</Text>
+      <Text style={styles.obsText}>Os serviços só poderão ser executados mediante autorização do cliente.
+        {"\n"}Licença junto à Prefeitura é de responsabilidade do cliente.
+        {"\n"}O cliente deverá fornecer ponto de energia junto ao local de instalação do letreiro.
+      </Text>
+        </View>
 
-        {/* 🚀 BUG CORRIGIDO: EMOJI REMOVIDO PARA NÃO QUEBRAR O PDF */}
         {dados.anexos && dados.anexos.length > 0 ? (
           <View style={styles.anexosSection} wrap={false}>
-            <Text style={styles.anexosTitle}>ANEXOS E ARQUIVOS DO PROJETO</Text>
+            <Text style={styles.anexosTitle}>ANEXOS DO PROJETO</Text>
             {dados.anexos.map((anexo, idx) => (
               <PDFLink key={idx} src={anexo.file_url} style={styles.anexosLink}>
                 {anexo.file_name} (Clique aqui para abrir)
@@ -304,25 +370,14 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
           </View>
         ) : null}
 
-        <View style={styles.signaturesContainer} wrap={false}>
-          <View style={styles.signatureBlock}>
-            <View style={styles.signatureLine} />
-            <Text style={styles.signatureText}>{dados.empresa?.nome_fantasia || "Assinatura Comercial"}</Text>
-            <Text style={styles.signatureRole}>Departamento de Vendas</Text>
-          </View>
-          <View style={styles.signatureBlock}>
-            <View style={styles.signatureLine} />
-            <Text style={styles.signatureText}>{dados.cliente?.nome_razao_social || "Assinatura do Cliente"}</Text>
-            <Text style={styles.signatureRole}>De acordo com os termos</Text>
-          </View>
-        </View>
+        <BlocoAssinaturas dados={dados} />
 
         <Text style={styles.fixedFooterText} fixed>
           Este documento tem validade de 15 dias a partir da data de emissão.
         </Text>
         
         <Text render={({ pageNumber, totalPages }) => (
-          pageNumber < totalPages ? "CONTINUA NA PRÓXIMA PÁGINA ➔" : ""
+          pageNumber < totalPages ? "CONTINUA NA PRÓXIMA PÁGINA" : ""
         )} fixed style={styles.continueText} />
 
         <Text render={({ pageNumber, totalPages }) => (
@@ -330,6 +385,22 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
         )} fixed style={styles.pageNumber} />
 
       </Page>
+
+      {imagensAnexas.map((img, idx) => (
+        <Page key={`anexo-${idx}`} size="A4" style={styles.page}>
+          <Text style={[styles.invoiceTitle, { fontSize: 16, marginBottom: 15 }]}>ANEXO: {img.file_name}</Text>
+          
+          <View style={{ flex: 1, marginVertical: 10, alignItems: "center", justifyContent: "center" }}>
+            <PDFImage src={img.file_url} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+          </View>
+
+          <BlocoAssinaturas dados={dados} />
+          
+          <Text style={styles.fixedFooterText} fixed>Este documento tem validade de 15 dias a partir da data de emissão.</Text>
+          <Text render={({ pageNumber, totalPages }) => (`Página ${pageNumber} de ${totalPages}`)} fixed style={styles.pageNumber} />
+        </Page>
+      ))}
+
     </Document>
   );
 };
