@@ -382,14 +382,18 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
                 <View style={styles.infoSection} wrap={false}>
                   {dados.orcamento.prazo ? (
                     <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>Prazo:</Text>
-                      <Text style={styles.infoValue}>{dados.orcamento.prazo}</Text>
+                      <Text style={{ fontSize: 10, color: "#4b5563", width: "100%" }}>
+                        <Text style={{ fontWeight: "bold", color: "#6b7280" }}>Prazo: </Text>
+                        {dados.orcamento.prazo}
+                      </Text>
                     </View>
                   ) : null}
                   {dados.orcamento.forma_pagamento ? (
                     <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>Forma de Pagamento:</Text>
-                      <Text style={styles.infoValue}>{dados.orcamento.forma_pagamento}</Text>
+                      <Text style={{ fontSize: 10, color: "#4b5563", width: "100%" }}>
+                        <Text style={{ fontWeight: "bold", color: "#6b7280" }}>Forma de Pagamento: </Text>
+                        {dados.orcamento.forma_pagamento}
+                      </Text>
                     </View>
                   ) : null}
                 </View>
