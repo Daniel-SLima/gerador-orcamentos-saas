@@ -112,7 +112,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between", borderBottomWidth: 1.5, borderBottomColor: "#9ca3af", borderBottomStyle: "solid", paddingBottom: 15, marginBottom: 15 },
 
   logoContainer: { width: "55%" },
-  logo: { width: 150, height: 60, objectFit: "contain", marginBottom: 4 },
+  // Ajustes de margem negativa (marginLeft e marginTop) para alinhar a logo atual perfeitamente com o texto e o título
+  logo: { width: 160, height: 70, objectFit: "contain", marginBottom: 0, marginLeft: -10, marginTop: -15 },
 
   companyTextWrapper: { paddingLeft: 12 },
   companyText: { fontSize: 9, color: "#374151", marginBottom: 1 },
@@ -271,8 +272,11 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
             <View style={styles.companyTextWrapper}>
               {dados.empresa?.cnpj ? <Text style={styles.companyText}>CNPJ: {dados.empresa.cnpj}</Text> : null}
               {dados.empresa?.telefone ? <Text style={styles.companyText}>Tel: {dados.empresa.telefone}</Text> : null}
-              {enderecoEmpresa.linha1 ? <Text style={styles.companyText}>{enderecoEmpresa.linha1}</Text> : null}
-              {enderecoEmpresa.linha2 ? <Text style={styles.companyText}>{enderecoEmpresa.linha2}</Text> : null}
+              {enderecoEmpresa.linha1 || enderecoEmpresa.linha2 ? (
+                <Text style={styles.companyText}>
+                  {[enderecoEmpresa.linha1, enderecoEmpresa.linha2].filter(Boolean).join(" - ")}
+                </Text>
+              ) : null}
             </View>
           </View>
 

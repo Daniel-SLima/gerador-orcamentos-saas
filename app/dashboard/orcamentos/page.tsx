@@ -92,6 +92,9 @@ function FormularioOrcamento() {
   const [buscaVendedor, setBuscaVendedor] = useState("");
   const [dropdownVendedorOpen, setDropdownVendedorOpen] = useState(false);
 
+  const [buscaProduto, setBuscaProduto] = useState("");
+  const [dropdownProdutoOpen, setDropdownProdutoOpen] = useState(false);
+
   useEffect(() => {
     carregarListasEPreencher();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -354,6 +357,9 @@ function FormularioOrcamento() {
   const nomeVendedorSelecionado = vendedores.find(v => v.id === vendedorId)?.nome || "";
   const vendedoresFiltrados = vendedores.filter(v => v.nome.toLowerCase().includes(buscaVendedor.toLowerCase()));
 
+  const nomeProdutoSelecionado = produtos.find(p => p.id === produtoId)?.descricao || "";
+  const produtosFiltrados = produtos.filter(p => p.descricao.toLowerCase().includes(buscaProduto.toLowerCase()));
+
   if (loadingDados) return <div className="p-8 text-gray-500">Preparando gerador...</div>;
 
   return (
@@ -445,12 +451,37 @@ function FormularioOrcamento() {
         <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 border-b border-gray-100 pb-2">Adicionar Produto</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mb-5 relative">
-          <div className="md:col-span-6 lg:col-span-8">
+          <div className="md:col-span-6 lg:col-span-8 relative">
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">Produto *</label>
-            <select value={produtoId} onChange={e => handleProdutoChange(e.target.value)} className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm">
-              <option value="">Selecione o produto...</option>
-              {produtos.map(p => <option key={p.id} value={p.id}>{p.descricao}</option>)}
-            </select>
+            <div className="relative">
+              <input 
+                type="text" 
+                placeholder="Digite para buscar produto..."
+                value={dropdownProdutoOpen ? buscaProduto : nomeProdutoSelecionado || ""}
+                onFocus={() => { setDropdownProdutoOpen(true); setBuscaProduto(""); }}
+                onChange={(e) => { setBuscaProduto(e.target.value); setDropdownProdutoOpen(true); }}
+                onBlur={() => setTimeout(() => setDropdownProdutoOpen(false), 200)}
+                className="w-full p-3 pr-10 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm cursor-text font-medium"
+              />
+              <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+              </div>
+              {dropdownProdutoOpen && (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-56 overflow-y-auto">
+                  <div onClick={() => { handleProdutoChange(""); setDropdownProdutoOpen(false); }} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-500 font-medium border-b border-gray-100">
+                    -- Limpar Seleção --
+                  </div>
+                  {produtosFiltrados.length > 0 ? produtosFiltrados.map(p => (
+                    <div key={p.id} onClick={() => { handleProdutoChange(p.id); setDropdownProdutoOpen(false); }} className="px-4 py-2.5 hover:bg-blue-50 cursor-pointer transition-colors border-b border-gray-50 last:border-0 hover:border-blue-100">
+                      <div className="font-semibold text-gray-900 text-sm">{p.descricao}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">V. Unitário Base: R$ {(p.valor_unitario || 0).toFixed(2).replace('.', ',')}</div>
+                    </div>
+                  )) : (
+                    <div className="px-4 py-3 text-sm text-gray-500 text-center">Nenhum produto encontrado</div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="md:col-span-6 lg:col-span-4 relative z-10">
