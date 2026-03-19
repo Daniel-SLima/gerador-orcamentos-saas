@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense, useRef } from "react";
 import { supabase } from "../../lib/supabase";
 import { useSearchParams } from "next/navigation";
+import { usePerfilUsuario } from "../../hooks/usePerfilUsuario";
 
 interface Cliente { id: string; nome_razao_social: string; }
 interface Vendedor { id: string; nome: string; }
@@ -48,6 +49,7 @@ function FormularioOrcamento() {
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
   const cloneId = searchParams.get("clone");
+  const { isAdmin } = usePerfilUsuario();
 
   const [loadingDados, setLoadingDados] = useState(true);
   const [salvando, setSalvando] = useState(false);
@@ -65,9 +67,7 @@ function FormularioOrcamento() {
   const [formaPagamento, setFormaPagamento] = useState("");
   const [observacoes, setObservacoes] = useState("");
 
-  // 🚀 ESTADOS DA OBRA (SPRINT 1)
-  const [enderecoObra, setEnderecoObra] = useState("");
-  const [contatoObra, setContatoObra] = useState("");
+
 
   const [produtoId, setProdutoId] = useState("");
   const [quantidade, setQuantidade] = useState<number>(1);
@@ -122,8 +122,6 @@ function FormularioOrcamento() {
           setPrazo(orcData.prazo || "");
           setFormaPagamento(orcData.forma_pagamento || "");
           setObservacoes(orcData.observacoes || "");
-          setEnderecoObra(orcData.endereco_obra || "");
-          setContatoObra(orcData.contato_obra || "");
 
           if (orcData.data_emissao) {
             setDataEmissao(orcData.data_emissao.split('T')[0]);
@@ -261,17 +259,21 @@ function FormularioOrcamento() {
 
       // 🚀 SALVANDO OS NOVOS CAMPOS NO BANCO
       if (editId) {
-        const { error: erroOrc } = await supabase.from("orcamentos").update({
+        let queryUpdate = supabase.from("orcamentos").update({
           cliente_id: clienteId,
           vendedor_id: vendedorId || null,
           valor_total: valorTotalOrcamento,
           prazo: prazo,
           forma_pagamento: formaPagamento,
           observacoes: observacoes,
-          endereco_obra: enderecoObra,
-          contato_obra: contatoObra,
           data_emissao: dataEmissao
-        }).eq("id", editId).eq("user_id", user.id);
+        }).eq("id", editId);
+
+        if (!isAdmin) {
+          queryUpdate = queryUpdate.eq("user_id", user.id);
+        }
+
+        const { error: erroOrc } = await queryUpdate;
 
         if (erroOrc) throw erroOrc;
         idFinal = editId;
@@ -285,8 +287,6 @@ function FormularioOrcamento() {
           prazo: prazo,
           forma_pagamento: formaPagamento,
           observacoes: observacoes,
-          endereco_obra: enderecoObra,
-          contato_obra: contatoObra,
           status: "Aberto",
           data_emissao: dataEmissao
         }]).select().single();
@@ -376,16 +376,7 @@ function FormularioOrcamento() {
           </select>
         </div>
 
-        {/* 🚀 NOVOS CAMPOS: OBRA */}
-        <div className="md:col-span-8">
-          <label className="block text-xs font-bold text-amber-600 uppercase tracking-wider mb-2">Endereço da Obra (Para a O.P.)</label>
-          <input type="text" value={enderecoObra} onChange={(e) => setEnderecoObra(e.target.value)} placeholder="Rua, Número, Bairro, Cidade..." className="w-full p-3 bg-amber-50/30 border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-gray-800 font-medium placeholder-gray-400" />
-        </div>
 
-        <div className="md:col-span-4">
-          <label className="block text-xs font-bold text-amber-600 uppercase tracking-wider mb-2">Contato da Obra / Responsável</label>
-          <input type="text" value={contatoObra} onChange={(e) => setContatoObra(e.target.value)} placeholder="Nome e Telefone..." className="w-full p-3 bg-amber-50/30 border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-gray-800 font-medium placeholder-gray-400" />
-        </div>
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">

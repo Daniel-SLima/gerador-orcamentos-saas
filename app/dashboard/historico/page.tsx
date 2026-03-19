@@ -26,6 +26,15 @@ interface Anexo {
   file_url: string;
 }
 
+const aplicarMascaraTelefone = (valor: string) => {
+  if (!valor) return "";
+  let v = valor.replace(/\D/g, '');
+  if (v.length > 11) v = v.slice(0, 11);
+  v = v.replace(/^(\d{2})(\d)/g, '($1) $2');
+  v = v.replace(/(\d)(\d{4})$/, '$1-$2');
+  return v;
+};
+
 export default function HistoricoOrcamentosPage() {
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,6 +51,17 @@ export default function HistoricoOrcamentosPage() {
   const [modalAnexosAberto, setModalAnexosAberto] = useState(false);
   const [anexosAtuais, setAnexosAtuais] = useState<Anexo[]>([]);
   const [loadingAnexos, setLoadingAnexos] = useState(false);
+
+  // 🚀 ESTADOS DO MODAL DE GERAR OP
+  const [modalOpAberto, setModalOpAberto] = useState(false);
+  const [orcamentoOpSelecionado, setOrcamentoOpSelecionado] = useState<string | null>(null);
+  const [opEnderecoRua, setOpEnderecoRua] = useState("");
+  const [opEnderecoNumero, setOpEnderecoNumero] = useState("");
+  const [opEnderecoBairro, setOpEnderecoBairro] = useState("");
+  const [opEnderecoCidade, setOpEnderecoCidade] = useState("");
+  const [opContatoNome, setOpContatoNome] = useState("");
+  const [opContatoTelefone, setOpContatoTelefone] = useState("");
+  const [salvandoOp, setSalvandoOp] = useState(false);
 
   useEffect(() => {
     if (!loadingPerfil) {
@@ -89,8 +109,16 @@ export default function HistoricoOrcamentosPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Sessão expirada.");
 
-      await supabase.from("itens_orcamento").delete().eq("orcamento_id", id).eq("user_id", user.id);
-      const { error } = await supabase.from("orcamentos").delete().eq("id", id).eq("user_id", user.id);
+      let queryItens = supabase.from("itens_orcamento").delete().eq("orcamento_id", id);
+      let queryOrc = supabase.from("orcamentos").delete().eq("id", id);
+
+      if (!isAdmin) {
+        queryItens = queryItens.eq("user_id", user.id);
+        queryOrc = queryOrc.eq("user_id", user.id);
+      }
+
+      await queryItens;
+      const { error } = await queryOrc;
 
       if (error) throw error;
       setOrcamentos(orcamentos.filter(orc => orc.id !== id));
@@ -128,9 +156,62 @@ export default function HistoricoOrcamentosPage() {
     }
   };
 
-  const gerarOP = (id: string) => {
-    window.open(`/imprimir/${id}?action=op`, "_blank");
+  const abrirModalGerarOP = (orc: Orcamento) => {
     setMenuAbertoId(null);
+    setOrcamentoOpSelecionado(orc.id);
+    setOpEnderecoRua("");
+    setOpEnderecoNumero("");
+    setOpEnderecoBairro("");
+    setOpEnderecoCidade("");
+    setOpContatoNome("");
+    setOpContatoTelefone("");
+    setModalOpAberto(true);
+  };
+
+  const confirmarGerarOP = async () => {
+    if (!orcamentoOpSelecionado) return;
+    setSalvandoOp(true);
+    
+    let enderecoCombinado = "";
+    if (opEnderecoRua || opEnderecoBairro || opEnderecoCidade) {
+      const partesEnd = [];
+      if (opEnderecoRua) partesEnd.push(opEnderecoRua + (opEnderecoNumero ? `, ${opEnderecoNumero}` : ""));
+      if (opEnderecoBairro) partesEnd.push(opEnderecoBairro);
+      if (opEnderecoCidade) partesEnd.push(opEnderecoCidade);
+      enderecoCombinado = partesEnd.join(" - ");
+    }
+    
+    let contatoCombinado = "";
+    if (opContatoNome || opContatoTelefone) {
+      const partesCont = [];
+      if (opContatoNome) partesCont.push(opContatoNome);
+      if (opContatoTelefone) partesCont.push(opContatoTelefone);
+      contatoCombinado = partesCont.join(" - ");
+    }
+
+    try {
+      let queryUpdate = supabase.from("orcamentos").update({
+        endereco_obra: enderecoCombinado,
+        contato_obra: contatoCombinado
+      }).eq("id", orcamentoOpSelecionado);
+
+      if (!isAdmin) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          queryUpdate = queryUpdate.eq("user_id", user.id);
+        }
+      }
+
+      const { error } = await queryUpdate;
+      if (error) throw error;
+      
+      setModalOpAberto(false);
+      window.open(`/imprimir/${orcamentoOpSelecionado}?action=op`, "_blank");
+    } catch (error) {
+      alert("Erro ao salvar detalhes da OP: " + (error as Error).message);
+    } finally {
+      setSalvandoOp(false);
+    }
   };
 
   // 🚀 FUNÇÃO PARA ABRIR O MODAL E BUSCAR OS ANEXOS NO BANCO
@@ -271,7 +352,7 @@ export default function HistoricoOrcamentosPage() {
                     {menuAbertoId === orc.id && (
                       <div className="absolute right-4 top-10 w-44 bg-white border border-gray-100 rounded-xl shadow-xl z-50 flex flex-col py-2 animate-fade-in">
                         {orc.status === 'Aprovado' && (
-                          <button onClick={(e) => { e.stopPropagation(); gerarOP(orc.id); }} className="px-4 py-2.5 text-sm text-left font-bold text-green-700 hover:bg-green-50 flex items-center gap-2">
+                          <button onClick={(e) => { e.stopPropagation(); abrirModalGerarOP(orc); }} className="px-4 py-2.5 text-sm text-left font-bold text-green-700 hover:bg-green-50 flex items-center gap-2">
                             📄 Gerar O.P.
                           </button>
                         )}
@@ -376,7 +457,7 @@ export default function HistoricoOrcamentosPage() {
                         {menuAbertoId === orc.id && (
                           <div className="absolute right-12 top-14 w-44 bg-white border border-gray-100 rounded-xl shadow-xl z-50 flex flex-col py-2 animate-fade-in">
                             {orc.status === 'Aprovado' && (
-                              <button onClick={(e) => { e.stopPropagation(); gerarOP(orc.id); }} className="px-4 py-2.5 text-sm text-left font-bold text-green-700 hover:bg-green-50 flex items-center gap-2">
+                              <button onClick={(e) => { e.stopPropagation(); abrirModalGerarOP(orc); }} className="px-4 py-2.5 text-sm text-left font-bold text-green-700 hover:bg-green-50 flex items-center gap-2">
                                 📄 Gerar O.P.
                               </button>
                             )}
@@ -443,6 +524,68 @@ export default function HistoricoOrcamentosPage() {
                   ))}
                 </ul>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚀 MODAL DE GERAR OP */}
+      {modalOpAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <h3 className="font-bold text-lg text-gray-900">Detalhes da Ordem de Produção</h3>
+              <button disabled={salvandoOp} onClick={() => setModalOpAberto(false)} className="text-gray-400 hover:text-red-500">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              <p className="text-sm text-gray-500 mb-2">Preencha os dados abaixo que aparecerão no PDF da OP. (Opcional)</p>
+              
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-amber-600 uppercase tracking-wider border-b border-amber-100 pb-1">Endereço da Obra</h4>
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="col-span-3">
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Rua / Logradouro</label>
+                    <input type="text" value={opEnderecoRua} onChange={e => setOpEnderecoRua(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium" />
+                  </div>
+                  <div className="col-span-1">
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Nº</label>
+                    <input type="text" value={opEnderecoNumero} onChange={e => setOpEnderecoNumero(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Bairro</label>
+                    <input type="text" value={opEnderecoBairro} onChange={e => setOpEnderecoBairro(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Cidade / UF</label>
+                    <input type="text" value={opEnderecoCidade} onChange={e => setOpEnderecoCidade(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 mt-4">
+                <h4 className="text-xs font-bold text-blue-600 uppercase tracking-wider border-b border-blue-100 pb-1">Contato / Responsável</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Nome</label>
+                    <input type="text" value={opContatoNome} onChange={e => setOpContatoNome(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Telefone</label>
+                    <input type="text" value={opContatoTelefone} onChange={e => setOpContatoTelefone(aplicarMascaraTelefone(e.target.value))} placeholder="(00) 00000-0000" className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" />
+                  </div>
+                </div>
+              </div>
+
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
+              <button disabled={salvandoOp} onClick={() => setModalOpAberto(false)} className="px-5 py-2.5 text-gray-600 font-semibold hover:bg-gray-200 rounded-lg transition-colors">Cancelar</button>
+              <button disabled={salvandoOp} onClick={confirmarGerarOP} className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-colors shadow-md flex items-center gap-2">
+                {salvandoOp ? "Gerando..." : "Confirmar e Gerar O.P."}
+              </button>
             </div>
           </div>
         </div>

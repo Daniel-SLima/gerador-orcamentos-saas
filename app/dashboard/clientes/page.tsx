@@ -27,6 +27,15 @@ interface CidadeIBGE {
   nome: string;
 }
 
+const aplicarMascaraTelefone = (valor: string) => {
+  if (!valor) return "";
+  let v = valor.replace(/\D/g, '');
+  if (v.length > 11) v = v.slice(0, 11);
+  v = v.replace(/^(\d{2})(\d)/g, '($1) $2');
+  v = v.replace(/(\d)(\d{4})$/, '$1-$2');
+  return v;
+};
+
 export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
@@ -186,7 +195,7 @@ export default function ClientesPage() {
     setNomeRazaoSocial(cliente.nome_razao_social || "");
     setCpfCnpj(cliente.cpf_cnpj || "");
     setContatoNome(cliente.contato_nome || "");
-    setTelefone(cliente.telefone || "");
+    setTelefone(aplicarMascaraTelefone(cliente.telefone || ""));
     setCep(cliente.cep || "");
     setUf(cliente.uf || "");
     setCidade(cliente.cidade || "");
@@ -265,7 +274,7 @@ export default function ClientesPage() {
           </div>
           <div className="md:col-span-6 lg:col-span-4">
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Telefone</label>
-            <input type="text" value={telefone} onChange={(e) => setTelefone(e.target.value)} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="(00) 00000-0000" />
+            <input type="text" value={telefone} onChange={(e) => setTelefone(aplicarMascaraTelefone(e.target.value))} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="(00) 00000-0000" />
           </div>
           
           <div className="md:col-span-12 lg:col-span-3">
