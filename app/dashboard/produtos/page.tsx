@@ -49,7 +49,6 @@ export default function ProdutosPage() {
       const { data, error } = await supabase
         .from("produtos")
         .select("*")
-        .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -151,8 +150,7 @@ export default function ProdutosPage() {
         const { error } = await supabase
           .from("produtos")
           .update(dadosParaSalvar)
-          .eq("id", produtoEditandoId)
-          .eq("user_id", user.id); 
+          .eq("id", produtoEditandoId);
 
         if (error) throw error;
         setMessage("✅ Produto atualizado com sucesso!");
@@ -201,8 +199,7 @@ export default function ProdutosPage() {
       const { error } = await supabase
         .from("produtos")
         .delete()
-        .eq("id", produtoParaDeletar.id)
-        .eq("user_id", user.id); 
+        .eq("id", produtoParaDeletar.id);
 
       if (error) throw error;
 

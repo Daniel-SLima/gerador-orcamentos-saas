@@ -9,6 +9,7 @@ interface Vendedor {
   id: string;
   nome: string;
   telefone: string;
+  email: string;
 }
 
 interface EstadoIBGE {
@@ -52,7 +53,7 @@ export default function PerfilEmpresa() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
-  const [vendedorForm, setVendedorForm] = useState({ id: "", nome: "", telefone: "" });
+  const [vendedorForm, setVendedorForm] = useState({ id: "", nome: "", telefone: "", email: "" });
   const [salvandoVendedor, setSalvandoVendedor] = useState(false);
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
 
@@ -96,7 +97,7 @@ export default function PerfilEmpresa() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: perfil } = await supabase.from("empresa_perfil").select("*").eq("user_id", user.id).single();
+      const { data: perfil } = await supabase.from("empresa_perfil").select("*").limit(1).maybeSingle();
 
       if (perfil) {
         setFormData({
@@ -183,14 +184,14 @@ export default function PerfilEmpresa() {
         ...formData,
         endereco_completo: enderecoConcatenado, 
         logo_url: urlFinalDaLogo,
-        user_id: user.id
+        user_id: user.id // Mantém apenas para registro de quem alterou por último
       };
 
-      const { data: perfilExistente } = await supabase.from("empresa_perfil").select("id").eq("user_id", user.id).single();
+      const { data: perfilExistente } = await supabase.from("empresa_perfil").select("id").limit(1).maybeSingle();
 
       if (perfilExistente) {
-        setMessage("💾 Atualizando perfil...");
-        const { error: updateError } = await supabase.from("empresa_perfil").update(dadosParaSalvar).eq("user_id", user.id);
+        setMessage("💾 Atualizando perfil da empresa para todos...");
+        const { error: updateError } = await supabase.from("empresa_perfil").update(dadosParaSalvar).eq("id", perfilExistente.id);
         if (updateError) throw updateError;
       } else {
         setMessage("💾 Criando perfil...");
@@ -228,15 +229,15 @@ export default function PerfilEmpresa() {
       if (!user) throw new Error("Usuário não logado");
 
       if (vendedorForm.id) {
-        const { error } = await supabase.from("vendedores").update({ nome: vendedorForm.nome, telefone: vendedorForm.telefone }).eq("id", vendedorForm.id);
+        const { error } = await supabase.from("vendedores").update({ nome: vendedorForm.nome, telefone: vendedorForm.telefone, email: vendedorForm.email }).eq("id", vendedorForm.id);
         if (error) throw error;
-        setVendedores(vendedores.map(v => v.id === vendedorForm.id ? { ...v, nome: vendedorForm.nome, telefone: vendedorForm.telefone } : v));
+        setVendedores(vendedores.map(v => v.id === vendedorForm.id ? { ...v, nome: vendedorForm.nome, telefone: vendedorForm.telefone, email: vendedorForm.email } : v));
       } else {
-        const { data, error } = await supabase.from("vendedores").insert([{ user_id: user.id, nome: vendedorForm.nome, telefone: vendedorForm.telefone }]).select().single();
+        const { data, error } = await supabase.from("vendedores").insert([{ user_id: user.id, nome: vendedorForm.nome, telefone: vendedorForm.telefone, email: vendedorForm.email }]).select().single();
         if (error) throw error;
         setVendedores([...vendedores, data]);
       }
-      setVendedorForm({ id: "", nome: "", telefone: "" }); 
+      setVendedorForm({ id: "", nome: "", telefone: "", email: "" }); 
     } catch (error) {
       alert("Erro ao salvar vendedor: " + (error as Error).message);
     } finally {
@@ -245,7 +246,7 @@ export default function PerfilEmpresa() {
   };
 
   const editarVendedor = (vend: Vendedor) => {
-    setVendedorForm({ id: vend.id, nome: vend.nome, telefone: aplicarMascaraTelefone(vend.telefone) });
+    setVendedorForm({ id: vend.id, nome: vend.nome, telefone: aplicarMascaraTelefone(vend.telefone), email: vend.email || "" });
     setMenuAbertoId(null);
   };
 
@@ -368,20 +369,24 @@ export default function PerfilEmpresa() {
           <p className="text-gray-500 text-sm mt-1">Cadastre os vendedores para selecioná-los nos orçamentos.</p>
         </div>
         <div className="p-6 space-y-8">
-          <form onSubmit={salvarVendedor} className={`p-5 rounded-lg border flex flex-col md:flex-row gap-4 items-end transition-colors ${vendedorForm.id ? "bg-yellow-50/50 border-yellow-200" : "bg-blue-50/50 border-blue-100"}`}>
-            <div className="flex-1 w-full">
+          <form onSubmit={salvarVendedor} className={`p-5 rounded-lg border grid lg:grid-cols-4 md:grid-cols-2 gap-4 items-end transition-colors ${vendedorForm.id ? "bg-yellow-50/50 border-yellow-200" : "bg-blue-50/50 border-blue-100"}`}>
+            <div className="w-full">
               <label className={`block text-xs font-bold uppercase tracking-wider mb-1 ${vendedorForm.id ? "text-yellow-800" : "text-blue-800"}`}>Nome do Vendedor *</label>
               <input type="text" required value={vendedorForm.nome} onChange={e => setVendedorForm({...vendedorForm, nome: e.target.value})} className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ex: João Silva" />
             </div>
-            <div className="flex-1 w-full">
+            <div className="w-full">
               <label className={`block text-xs font-bold uppercase tracking-wider mb-1 ${vendedorForm.id ? "text-yellow-800" : "text-blue-800"}`}>Telefone (Opcional)</label>
               <input type="text" value={vendedorForm.telefone} onChange={e => setVendedorForm({...vendedorForm, telefone: aplicarMascaraTelefone(e.target.value)})} className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="(00) 00000-0000" />
             </div>
-            <div className="flex gap-2 w-full md:w-auto">
+            <div className="w-full">
+              <label className={`block text-xs font-bold uppercase tracking-wider mb-1 ${vendedorForm.id ? "text-yellow-800" : "text-blue-800"}`}>E-mail (Opcional)</label>
+              <input type="email" value={vendedorForm.email} onChange={e => setVendedorForm({...vendedorForm, email: e.target.value})} className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="exemplo@email.com" />
+            </div>
+            <div className="flex gap-2 w-full mt-2 lg:mt-0">
               {vendedorForm.id && (
-                <button type="button" onClick={() => setVendedorForm({id: "", nome: "", telefone: ""})} className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-2.5 px-4 rounded-lg transition-colors h-[46px]">Cancelar</button>
+                <button type="button" onClick={() => setVendedorForm({id: "", nome: "", telefone: "", email: ""})} className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-2.5 px-4 rounded-lg transition-colors h-[46px]">Cancelar</button>
               )}
-              <button type="submit" disabled={salvandoVendedor} className={`flex-1 md:w-auto text-white font-bold py-2.5 px-6 rounded-lg transition-colors h-[46px] ${vendedorForm.id ? "bg-yellow-500 hover:bg-yellow-600" : "bg-blue-600 hover:bg-blue-700"}`}>
+              <button type="submit" disabled={salvandoVendedor} className={`flex-1 text-white font-bold py-2.5 px-6 rounded-lg transition-colors h-[46px] ${vendedorForm.id ? "bg-yellow-500 hover:bg-yellow-600" : "bg-blue-600 hover:bg-blue-700"}`}>
                 {salvandoVendedor ? "Salvando..." : (vendedorForm.id ? "Salvar Edição" : "+ Adicionar")}
               </button>
             </div>
@@ -397,7 +402,10 @@ export default function PerfilEmpresa() {
                   <div key={vendedor.id} className="border border-gray-200 rounded-lg p-4 flex justify-between items-center bg-white shadow-sm relative">
                     <div>
                       <p className="font-bold text-gray-800">{vendedor.nome}</p>
-                      <p className="text-sm text-gray-500">{vendedor.telefone || "Sem telefone"}</p>
+                      <p className="text-sm text-gray-500 font-medium">{vendedor.telefone || "Sem telefone"}</p>
+                      {vendedor.email && (
+                        <p className="text-xs text-blue-600 mt-0.5">{vendedor.email}</p>
+                      )}
                     </div>
                     <div>
                       <button onClick={(e) => { e.stopPropagation(); toggleMenu(vendedor.id); }} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors focus:outline-none">

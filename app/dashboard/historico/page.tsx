@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
-import { useRouter } from "next/navigation"; 
+import { useRouter } from "next/navigation";
+import { usePerfilUsuario } from "../../hooks/usePerfilUsuario";
 
 interface Orcamento {
   id: string;
@@ -12,6 +13,9 @@ interface Orcamento {
   status: string;
   clientes: {
     nome_razao_social: string;
+  };
+  vendedores?: {
+    nome: string;
   };
 }
 
@@ -26,12 +30,13 @@ export default function HistoricoOrcamentosPage() {
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
-  const router = useRouter(); 
+  const router = useRouter();
+  const { isAdmin, loadingPerfil } = usePerfilUsuario();
 
   const [termoBusca, setTermoBusca] = useState("");
   const [tipoFiltro, setTipoFiltro] = useState("todos"); // 'todos', 'mes', 'dia'
-  const [mesSelecionado, setMesSelecionado] = useState(new Date().toISOString().slice(0, 7)); 
-  const [diaSelecionado, setDiaSelecionado] = useState(new Date().toISOString().slice(0, 10)); 
+  const [mesSelecionado, setMesSelecionado] = useState(new Date().toISOString().slice(0, 7));
+  const [diaSelecionado, setDiaSelecionado] = useState(new Date().toISOString().slice(0, 10));
 
   // 🚀 ESTADOS DO MODAL DE ANEXOS
   const [modalAnexosAberto, setModalAnexosAberto] = useState(false);
@@ -39,15 +44,17 @@ export default function HistoricoOrcamentosPage() {
   const [loadingAnexos, setLoadingAnexos] = useState(false);
 
   useEffect(() => {
-    carregarOrcamentos();
-  }, []);
+    if (!loadingPerfil) {
+      carregarOrcamentos();
+    }
+  }, [loadingPerfil]);
 
   const carregarOrcamentos = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("orcamentos")
         .select(`
           id,
@@ -55,10 +62,16 @@ export default function HistoricoOrcamentosPage() {
           data_emissao,
           valor_total,
           status,
-          clientes ( nome_razao_social )
+          clientes ( nome_razao_social ),
+          vendedores ( nome )
         `)
-        .eq("user_id", user.id)
         .order("numero_orcamento", { ascending: false });
+
+      if (!isAdmin) {
+        query = query.eq("user_id", user.id);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setOrcamentos(data as unknown as Orcamento[]);
@@ -105,13 +118,28 @@ export default function HistoricoOrcamentosPage() {
     router.push(`/dashboard/orcamentos?clone=${id}`);
   };
 
+  const mudarStatus = async (id: string, novoStatus: string) => {
+    try {
+      const { error } = await supabase.from("orcamentos").update({ status: novoStatus }).eq("id", id);
+      if (error) throw error;
+      setOrcamentos(orcamentos.map(orc => orc.id === id ? { ...orc, status: novoStatus } : orc));
+    } catch (error) {
+      alert("Erro ao mudar status: " + (error as Error).message);
+    }
+  };
+
+  const gerarOP = (id: string) => {
+    window.open(`/imprimir/${id}?action=op`, "_blank");
+    setMenuAbertoId(null);
+  };
+
   // 🚀 FUNÇÃO PARA ABRIR O MODAL E BUSCAR OS ANEXOS NO BANCO
   const verAnexos = async (orcamentoId: string) => {
     setMenuAbertoId(null);
     setModalAnexosAberto(true);
     setLoadingAnexos(true);
     setAnexosAtuais([]);
-    
+
     const { data } = await supabase.from("orcamento_anexos").select("*").eq("orcamento_id", orcamentoId);
     if (data) setAnexosAtuais(data);
     setLoadingAnexos(false);
@@ -140,15 +168,15 @@ export default function HistoricoOrcamentosPage() {
   const orcamentosFiltrados = orcamentos.filter((orc) => {
     const termo = termoBusca.toLowerCase();
     const nomeCliente = (Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : orc.clientes?.nome_razao_social) || "";
-    
-    const bateBusca = 
+
+    const bateBusca =
       String(orc.numero_orcamento).includes(termo) ||
       nomeCliente.toLowerCase().includes(termo) ||
       orc.status.toLowerCase().includes(termo);
 
     let bateData = true;
-    const dataBase = orc.data_emissao.split('T')[0]; 
-    
+    const dataBase = orc.data_emissao.split('T')[0];
+
     if (tipoFiltro === "mes" && mesSelecionado) {
       bateData = dataBase.startsWith(mesSelecionado);
     } else if (tipoFiltro === "dia" && diaSelecionado) {
@@ -160,7 +188,7 @@ export default function HistoricoOrcamentosPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto" onClick={() => menuAbertoId && setMenuAbertoId(null)}>
-      
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
         <h1 className="text-2xl font-bold text-gray-900">Histórico de Orçamentos</h1>
         <p className="text-sm font-semibold text-gray-500 bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm">
@@ -219,7 +247,7 @@ export default function HistoricoOrcamentosPage() {
           </div>
         ) : (
           <div className="pb-16 md:pb-0">
-            
+
             <div className="block md:hidden divide-y divide-gray-100">
               {orcamentosFiltrados.map((orc) => (
                 <div key={orc.id} className="p-4 hover:bg-gray-50 transition-colors relative">
@@ -229,14 +257,24 @@ export default function HistoricoOrcamentosPage() {
                       <p className="text-sm font-semibold text-gray-700 mt-0.5">
                         {Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : orc.clientes?.nome_razao_social}
                       </p>
+                      {isAdmin && (
+                        <p className="text-[11px] text-gray-500 mt-1 uppercase font-bold tracking-wider">
+                          Vendedor: {Array.isArray(orc.vendedores) ? orc.vendedores[0]?.nome : orc.vendedores?.nome || "Indefinido"}
+                        </p>
+                      )}
                     </div>
-                    
+
                     <button onClick={(e) => { e.stopPropagation(); toggleMenu(orc.id); }} className="p-1 -mr-2 text-gray-400 hover:text-blue-600 rounded-lg transition-colors focus:outline-none">
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
                     </button>
 
                     {menuAbertoId === orc.id && (
                       <div className="absolute right-4 top-10 w-44 bg-white border border-gray-100 rounded-xl shadow-xl z-50 flex flex-col py-2 animate-fade-in">
+                        {orc.status === 'Aprovado' && (
+                          <button onClick={(e) => { e.stopPropagation(); gerarOP(orc.id); }} className="px-4 py-2.5 text-sm text-left font-bold text-green-700 hover:bg-green-50 flex items-center gap-2">
+                            📄 Gerar O.P.
+                          </button>
+                        )}
                         <button onClick={(e) => { e.stopPropagation(); visualizarPDF(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg> Ver PDF
                         </button>
@@ -248,7 +286,7 @@ export default function HistoricoOrcamentosPage() {
                         </button>
                         <div className="h-px bg-gray-100 my-1 mx-2"></div>
                         <button onClick={(e) => { e.stopPropagation(); editarOrcamento(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-blue-600 hover:bg-blue-50 flex items-center gap-2">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg> Editar 
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg> Editar
                         </button>
                         <button onClick={(e) => { e.stopPropagation(); clonarOrcamento(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-purple-600 hover:bg-purple-50 flex items-center gap-2">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg> Duplicar
@@ -260,15 +298,25 @@ export default function HistoricoOrcamentosPage() {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="flex justify-between items-end mt-4">
                     <div className="space-y-1.5">
                       <p className="text-xs text-gray-500 font-medium">Emitido em: {formatarData(orc.data_emissao)}</p>
-                      <span className={`inline-block px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md ${
-                        orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {orc.status}
-                      </span>
+                      <select
+                        value={orc.status}
+                        onChange={(e) => mudarStatus(orc.id, e.target.value)}
+                        className={`inline-block px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border appearance-none outline-none cursor-pointer ${orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                            orc.status === 'Aberto' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                              orc.status === 'Aprovado' ? 'bg-green-50 text-green-700 border-green-200' :
+                                orc.status === 'Recusado' ? 'bg-red-50 text-red-700 border-red-200' :
+                                  'bg-gray-100 text-gray-600 border-gray-200'
+                          }`}
+                      >
+                        <option value="Rascunho">Rascunho</option>
+                        <option value="Aberto">Aberto</option>
+                        <option value="Aprovado" disabled={!isAdmin}>Aprovado</option>
+                        <option value="Recusado">Recusado</option>
+                      </select>
                     </div>
                     <p className="font-black text-green-600 text-lg">{formatarMoeda(orc.valor_total)}</p>
                   </div>
@@ -295,16 +343,31 @@ export default function HistoricoOrcamentosPage() {
                       <td className="p-4 text-gray-600">{formatarData(orc.data_emissao)}</td>
                       <td className="p-4 text-gray-800 font-medium">
                         {Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : orc.clientes?.nome_razao_social}
+                        {isAdmin && (
+                          <div className="text-xs text-gray-500 font-normal mt-1 border-t border-gray-100 pt-1">
+                            Vend: {Array.isArray(orc.vendedores) ? orc.vendedores[0]?.nome : orc.vendedores?.nome || "N/A"}
+                          </div>
+                        )}
                       </td>
                       <td className="p-4">
-                        <span className={`px-3 py-1 text-xs font-bold rounded-md ${
-                          orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          {orc.status}
-                        </span>
+                        <select
+                          value={orc.status}
+                          onChange={(e) => mudarStatus(orc.id, e.target.value)}
+                          className={`px-3 py-1 text-xs font-bold rounded-md border appearance-none outline-none cursor-pointer ${orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                              orc.status === 'Aberto' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                orc.status === 'Aprovado' ? 'bg-green-50 text-green-700 border-green-200' :
+                                  orc.status === 'Recusado' ? 'bg-red-50 text-red-700 border-red-200' :
+                                    'bg-gray-100 text-gray-600 border-gray-200'
+                            }`}
+                        >
+                          <option value="Rascunho">Rascunho</option>
+                          <option value="Aberto">Aberto</option>
+                          <option value="Aprovado" disabled={!isAdmin}>Aprovado</option>
+                          <option value="Recusado">Recusado</option>
+                        </select>
                       </td>
                       <td className="p-4 text-green-600 font-bold">{formatarMoeda(orc.valor_total)}</td>
-                      
+
                       <td className="p-4 text-center relative">
                         <button onClick={(e) => { e.stopPropagation(); toggleMenu(orc.id); }} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors flex items-center justify-center mx-auto gap-2">
                           Ações <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
@@ -312,6 +375,11 @@ export default function HistoricoOrcamentosPage() {
 
                         {menuAbertoId === orc.id && (
                           <div className="absolute right-12 top-14 w-44 bg-white border border-gray-100 rounded-xl shadow-xl z-50 flex flex-col py-2 animate-fade-in">
+                            {orc.status === 'Aprovado' && (
+                              <button onClick={(e) => { e.stopPropagation(); gerarOP(orc.id); }} className="px-4 py-2.5 text-sm text-left font-bold text-green-700 hover:bg-green-50 flex items-center gap-2">
+                                📄 Gerar O.P.
+                              </button>
+                            )}
                             <button onClick={(e) => { e.stopPropagation(); visualizarPDF(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg> Ver PDF
                             </button>

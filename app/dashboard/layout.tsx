@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
+import { usePerfilUsuario } from "../hooks/usePerfilUsuario";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -12,6 +13,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const pathname = usePathname();
   const router = useRouter();
+  const { isAdmin } = usePerfilUsuario();
 
   // =========================================================================
   // 🧹 FAXINA INTELIGENTE DE ANEXOS TEMPORÁRIOS (DECLARADA ANTES DE SER USADA)
@@ -75,11 +77,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const menuItems = [
     { href: "/dashboard", label: "Início", icon: "🏠" },
-    { href: "/dashboard/perfil", label: "Minha Empresa", icon: "🏢" },
+    ...(isAdmin ? [{ href: "/dashboard/perfil", label: "Minha Empresa", icon: "🏢" }] : []),
     { href: "/dashboard/clientes", label: "Clientes", icon: "👥" },
     { href: "/dashboard/produtos", label: "Produtos", icon: "📦" },
     { href: "/dashboard/orcamentos", label: "Orçamentos", icon: "📄" },
     { href: "/dashboard/historico", label: "Histórico", icon: "🕒" },
+    ...(isAdmin ? [{ href: "/dashboard/usuarios", label: "Equipe", icon: "🛡️" }] : [])
   ];
 
   // Tela de transição enquanto verifica o login

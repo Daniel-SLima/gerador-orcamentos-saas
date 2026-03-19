@@ -39,7 +39,7 @@ interface AnexoBanco {
 const obterDataAtualBrasil = () => {
   const data = new Date();
   const options = { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' } as const;
-  const dataFormatada = data.toLocaleDateString('pt-BR', options); 
+  const dataFormatada = data.toLocaleDateString('pt-BR', options);
   const [dia, mes, ano] = dataFormatada.split('/');
   return `${ano}-${mes}-${dia}`;
 };
@@ -59,11 +59,15 @@ function FormularioOrcamento() {
   const [dataEmissao, setDataEmissao] = useState(obterDataAtualBrasil());
   const [clienteId, setClienteId] = useState("");
   const [vendedorId, setVendedorId] = useState("");
-  
+
   // 🚀 ADICIONADOS OS DOIS NOVOS ESTADOS AQUI
   const [prazo, setPrazo] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("");
   const [observacoes, setObservacoes] = useState("");
+
+  // 🚀 ESTADOS DA OBRA (SPRINT 1)
+  const [enderecoObra, setEnderecoObra] = useState("");
+  const [contatoObra, setContatoObra] = useState("");
 
   const [produtoId, setProdutoId] = useState("");
   const [quantidade, setQuantidade] = useState<number>(1);
@@ -77,7 +81,7 @@ function FormularioOrcamento() {
   const [itemEditando, setItemEditando] = useState<ItemCarrinho | null>(null);
 
   // 🚀 ESTADOS PARA ANEXOS DIVIDIDOS (OS QUE JÁ EXISTEM NO BANCO E OS NOVOS)
-  const [anexosSalvos, setAnexosSalvos] = useState<AnexoBanco[]>([]); 
+  const [anexosSalvos, setAnexosSalvos] = useState<AnexoBanco[]>([]);
   const [arquivosAnexos, setArquivosAnexos] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -92,9 +96,9 @@ function FormularioOrcamento() {
       if (!user) return;
 
       const [resClientes, resVendedores, resProdutos] = await Promise.all([
-        supabase.from("clientes").select("id, nome_razao_social").eq("user_id", user.id).order("nome_razao_social"),
-        supabase.from("vendedores").select("id, nome").eq("user_id", user.id).order("nome"),
-        supabase.from("produtos").select("id, descricao, valor_unitario, medidas").eq("user_id", user.id).order("descricao")
+        supabase.from("clientes").select("id, nome_razao_social").order("nome_razao_social"),
+        supabase.from("vendedores").select("id, nome").order("nome"),
+        supabase.from("produtos").select("id, descricao, valor_unitario, medidas").order("descricao")
       ]);
 
       if (resClientes.data) setClientes(resClientes.data);
@@ -113,17 +117,19 @@ function FormularioOrcamento() {
         if (orcData) {
           setClienteId(orcData.cliente_id || "");
           setVendedorId(orcData.vendedor_id || "");
-          
+
           // 🚀 PUXANDO OS DADOS NOVOS DO BANCO
           setPrazo(orcData.prazo || "");
           setFormaPagamento(orcData.forma_pagamento || "");
           setObservacoes(orcData.observacoes || "");
-          
+          setEnderecoObra(orcData.endereco_obra || "");
+          setContatoObra(orcData.contato_obra || "");
+
           if (orcData.data_emissao) {
             setDataEmissao(orcData.data_emissao.split('T')[0]);
           }
         }
-        
+
         if (itensData) {
           const itensMontados: ItemCarrinho[] = itensData.map((i: ItemBanco) => ({
             produto_id: i.produto_id,
@@ -199,14 +205,14 @@ function FormularioOrcamento() {
 
   const salvarEdicao = () => {
     if (indexEditando === null || !itemEditando) return;
-    
+
     const subtotalBruto = itemEditando.quantidade * itemEditando.valor_unitario;
     let subtotalLiquido = subtotalBruto - itemEditando.desconto;
     if (subtotalLiquido < 0) subtotalLiquido = 0;
 
     const listaAtualizada = [...itens];
     listaAtualizada[indexEditando] = { ...itemEditando, subtotal: subtotalLiquido };
-    
+
     setItens(listaAtualizada);
     fecharModalEdicao();
   };
@@ -256,31 +262,35 @@ function FormularioOrcamento() {
       // 🚀 SALVANDO OS NOVOS CAMPOS NO BANCO
       if (editId) {
         const { error: erroOrc } = await supabase.from("orcamentos").update({
-          cliente_id: clienteId, 
-          vendedor_id: vendedorId || null, 
-          valor_total: valorTotalOrcamento, 
+          cliente_id: clienteId,
+          vendedor_id: vendedorId || null,
+          valor_total: valorTotalOrcamento,
           prazo: prazo,
           forma_pagamento: formaPagamento,
           observacoes: observacoes,
-          data_emissao: dataEmissao 
+          endereco_obra: enderecoObra,
+          contato_obra: contatoObra,
+          data_emissao: dataEmissao
         }).eq("id", editId).eq("user_id", user.id);
-        
+
         if (erroOrc) throw erroOrc;
         idFinal = editId;
         await supabase.from("itens_orcamento").delete().eq("orcamento_id", editId);
       } else {
         const { data: orcamentoGerado, error: erroOrc } = await supabase.from("orcamentos").insert([{
-          user_id: user.id, 
-          cliente_id: clienteId, 
-          vendedor_id: vendedorId || null, 
-          valor_total: valorTotalOrcamento, 
+          user_id: user.id,
+          cliente_id: clienteId,
+          vendedor_id: vendedorId || null,
+          valor_total: valorTotalOrcamento,
           prazo: prazo,
           forma_pagamento: formaPagamento,
-          observacoes: observacoes, 
-          status: "Rascunho",
+          observacoes: observacoes,
+          endereco_obra: enderecoObra,
+          contato_obra: contatoObra,
+          status: "Aberto",
           data_emissao: dataEmissao
         }]).select().single();
-        
+
         if (erroOrc) throw erroOrc;
         idFinal = orcamentoGerado.id;
       }
@@ -300,9 +310,9 @@ function FormularioOrcamento() {
         for (const file of arquivosAnexos) {
           const ext = file.name.split('.').pop();
           const filePath = `${user.id}/${idFinal}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-          
+
           const { error: uploadError } = await supabase.storage.from("anexos").upload(filePath, file);
-          
+
           if (!uploadError) {
             const { data: { publicUrl } } = supabase.storage.from("anexos").getPublicUrl(filePath);
             anexosParaSalvar.push({
@@ -313,7 +323,7 @@ function FormularioOrcamento() {
             });
           }
         }
-        
+
         if (anexosParaSalvar.length > 0) {
           await supabase.from("orcamento_anexos").insert(anexosParaSalvar);
         }
@@ -334,7 +344,7 @@ function FormularioOrcamento() {
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
-      
+
       <div className="mb-8 mt-2">
         <h1 className="text-2xl font-bold text-gray-900 mb-1">
           {editId ? "✏️ Editando Orçamento" : cloneId ? "📋 Duplicando Orçamento" : "Novo Orçamento"}
@@ -357,7 +367,7 @@ function FormularioOrcamento() {
             {clientes.map(c => <option key={c.id} value={c.id}>{c.nome_razao_social}</option>)}
           </select>
         </div>
-        
+
         <div className="md:col-span-4">
           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Vendedor Responsável</label>
           <select value={vendedorId} onChange={e => setVendedorId(e.target.value)} className="w-full p-3 bg-blue-50/50 border border-blue-100 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-blue-900 font-medium cursor-pointer">
@@ -365,11 +375,22 @@ function FormularioOrcamento() {
             {vendedores.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
           </select>
         </div>
+
+        {/* 🚀 NOVOS CAMPOS: OBRA */}
+        <div className="md:col-span-8">
+          <label className="block text-xs font-bold text-amber-600 uppercase tracking-wider mb-2">Endereço da Obra (Para a O.P.)</label>
+          <input type="text" value={enderecoObra} onChange={(e) => setEnderecoObra(e.target.value)} placeholder="Rua, Número, Bairro, Cidade..." className="w-full p-3 bg-amber-50/30 border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-gray-800 font-medium placeholder-gray-400" />
+        </div>
+
+        <div className="md:col-span-4">
+          <label className="block text-xs font-bold text-amber-600 uppercase tracking-wider mb-2">Contato da Obra / Responsável</label>
+          <input type="text" value={contatoObra} onChange={(e) => setContatoObra(e.target.value)} placeholder="Nome e Telefone..." className="w-full p-3 bg-amber-50/30 border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-gray-800 font-medium placeholder-gray-400" />
+        </div>
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
         <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 border-b border-gray-100 pb-2">Adicionar Produto</h2>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mb-5 relative">
           <div className="md:col-span-6 lg:col-span-8">
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">Produto *</label>
@@ -465,7 +486,7 @@ function FormularioOrcamento() {
                     </td>
                     <td className="py-3 px-4 text-center text-gray-600 font-medium">{item.quantidade}</td>
                     <td className="py-3 px-4 text-right text-gray-600">{formatarMoeda(item.valor_unitario)}</td>
-                    
+
                     {/* 🚀 AQUI ESTÁ A CORREÇÃO DO BUG NO DESKTOP */}
                     <td className="py-3 px-4 text-right">
                       {item.desconto > 0 ? (
@@ -493,10 +514,10 @@ function FormularioOrcamento() {
               </tbody>
             </table>
           </div>
-          
+
           <div className="bg-gray-50 p-6 border-t border-gray-200 flex flex-col md:flex-row justify-between items-start gap-6">
             <div className="w-full md:w-1/2 space-y-4">
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Prazo</label>
@@ -512,17 +533,17 @@ function FormularioOrcamento() {
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Observações do Orçamento</label>
                 <textarea value={observacoes} onChange={e => setObservacoes(e.target.value)} rows={3} className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
               </div>
-              
+
               <div className="p-4 border-2 border-dashed border-gray-200 rounded-xl bg-white">
                 <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">📎 Anexos Opcionais (Válidos por 15 dias)</label>
                 <input type="file" ref={fileInputRef} multiple accept="image/*,.pdf" onChange={handleFileChange} className="hidden" />
-                <button 
-                  onClick={(e) => { e.preventDefault(); fileInputRef.current?.click(); }} 
+                <button
+                  onClick={(e) => { e.preventDefault(); fileInputRef.current?.click(); }}
                   className="w-full py-2 bg-blue-50 text-blue-700 font-semibold rounded-lg hover:bg-blue-100 transition-colors text-sm border border-blue-100"
                 >
                   + Adicionar Foto ou PDF
                 </button>
-                
+
                 {anexosSalvos.length > 0 && (
                   <ul className="mt-3 space-y-2 mb-3">
                     {anexosSalvos.map((anexo) => (
@@ -563,12 +584,11 @@ function FormularioOrcamento() {
       )}
 
       <div className="flex justify-end pt-4">
-        <button 
+        <button
           onClick={gerarOuAtualizarOrcamento}
           disabled={salvando || itens.length === 0 || !clienteId || !dataEmissao}
-          className={`w-full md:w-auto text-white font-black text-lg py-4 px-10 rounded-xl shadow-lg transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:bg-gray-400 ${
-            editId ? "bg-amber-500 hover:bg-amber-600" : "bg-blue-600 hover:bg-blue-700"
-          }`}
+          className={`w-full md:w-auto text-white font-black text-lg py-4 px-10 rounded-xl shadow-lg transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:bg-gray-400 ${editId ? "bg-amber-500 hover:bg-amber-600" : "bg-blue-600 hover:bg-blue-700"
+            }`}
         >
           {salvando ? "Processando e Enviando Anexos..." : (
             <>
@@ -591,24 +611,24 @@ function FormularioOrcamento() {
             <div className="p-6 overflow-y-auto flex-1 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Descrição do Produto</label>
-                <input type="text" value={itemEditando.descricao} onChange={(e) => setItemEditando({...itemEditando, descricao: e.target.value})} className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm font-medium" />
+                <input type="text" value={itemEditando.descricao} onChange={(e) => setItemEditando({ ...itemEditando, descricao: e.target.value })} className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm font-medium" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Medidas / Especificações</label>
-                <textarea rows={2} value={itemEditando.medidas} onChange={(e) => setItemEditando({...itemEditando, medidas: e.target.value})} className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm resize-y" />
+                <textarea rows={2} value={itemEditando.medidas} onChange={(e) => setItemEditando({ ...itemEditando, medidas: e.target.value })} className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm resize-y" />
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Quantidade</label>
-                  <input type="number" min="1" value={itemEditando.quantidade} onChange={(e) => setItemEditando({...itemEditando, quantidade: Number(e.target.value)})} className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-center shadow-sm" />
+                  <input type="number" min="1" value={itemEditando.quantidade} onChange={(e) => setItemEditando({ ...itemEditando, quantidade: Number(e.target.value) })} className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-center shadow-sm" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">V. Unit (R$)</label>
-                  <input type="number" step="0.01" value={itemEditando.valor_unitario} onChange={(e) => setItemEditando({...itemEditando, valor_unitario: Number(e.target.value)})} className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-right shadow-sm" />
+                  <input type="number" step="0.01" value={itemEditando.valor_unitario} onChange={(e) => setItemEditando({ ...itemEditando, valor_unitario: Number(e.target.value) })} className="w-full p-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-right shadow-sm" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-red-500 uppercase tracking-wider mb-1.5">Desc (R$)</label>
-                  <input type="number" step="0.01" min="0" value={itemEditando.desconto} onChange={(e) => setItemEditando({...itemEditando, desconto: Number(e.target.value)})} className="w-full p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-right font-medium shadow-sm" />
+                  <input type="number" step="0.01" min="0" value={itemEditando.desconto} onChange={(e) => setItemEditando({ ...itemEditando, desconto: Number(e.target.value) })} className="w-full p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-right font-medium shadow-sm" />
                 </div>
               </div>
             </div>

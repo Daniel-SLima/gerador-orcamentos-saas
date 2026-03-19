@@ -10,7 +10,7 @@ interface Cliente {
   cpf_cnpj: string;
   telefone: string;
   contato_nome: string;
-  endereco?: string; 
+  endereco?: string;
   rua_numero?: string;
   bairro?: string;
   cidade?: string;
@@ -20,6 +20,7 @@ interface Cliente {
 interface Vendedor {
   nome: string;
   telefone: string;
+  email?: string;
 }
 
 interface Empresa {
@@ -27,7 +28,7 @@ interface Empresa {
   cnpj: string;
   telefone: string;
   logo_url: string;
-  endereco_completo?: string; 
+  endereco_completo?: string;
   rua_numero?: string;
   bairro?: string;
   cidade?: string;
@@ -58,6 +59,8 @@ interface Orcamento {
   // 🚀 ADICIONADO: Novos campos que vêm do banco
   prazo?: string;
   forma_pagamento?: string;
+  endereco_obra?: string;
+  contato_obra?: string;
 }
 
 interface Anexo {
@@ -71,7 +74,7 @@ interface DadosImpressao {
   cliente: Cliente;
   itens: ItemOrcamento[];
   empresa: Empresa | null;
-  anexos: Anexo[]; 
+  anexos: Anexo[];
 }
 
 const formatarMoeda = (valor: number) => {
@@ -105,15 +108,15 @@ const montarEnderecoLinhas = (
 
 const styles = StyleSheet.create({
   page: { paddingTop: 30, paddingBottom: 60, paddingLeft: 40, paddingRight: 40, fontFamily: "Helvetica", backgroundColor: "#ffffff" },
-  
+
   header: { flexDirection: "row", justifyContent: "space-between", borderBottomWidth: 1.5, borderBottomColor: "#9ca3af", borderBottomStyle: "solid", paddingBottom: 15, marginBottom: 15 },
-  
+
   logoContainer: { width: "55%" },
-  logo: { width: 150, height: 60, objectFit: "contain", marginBottom: 4 }, 
-  
+  logo: { width: 150, height: 60, objectFit: "contain", marginBottom: 4 },
+
   companyTextWrapper: { paddingLeft: 12 },
-  companyText: { fontSize: 9, color: "#374151", marginBottom: 1 }, 
-  
+  companyText: { fontSize: 9, color: "#374151", marginBottom: 1 },
+
   invoiceTitleBlock: { width: "45%", alignItems: "flex-end" },
   invoiceTitle: { fontSize: 24, fontWeight: "bold", color: "#2563eb", marginBottom: 8 },
   invoiceDetails: { fontSize: 10, color: "#4b5563", marginBottom: 3 },
@@ -123,18 +126,18 @@ const styles = StyleSheet.create({
   clientSection: { backgroundColor: "#f9fafb", padding: 12, borderRadius: 6, marginBottom: 20 },
   clientTitle: { fontSize: 9, color: "#9ca3af", marginBottom: 6, textTransform: "uppercase", fontWeight: "bold" },
   clientName: { fontSize: 14, fontWeight: "bold", color: "#111827", marginBottom: 8 },
-  
+
   clientGridRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 4 },
   clientGridCol: { width: "48%", fontSize: 10, color: "#4b5563" },
   clientLabel: { fontWeight: "bold", color: "#374151" },
-  
+
   table: { width: "100%", marginBottom: 25 },
   tableHeader: { flexDirection: "row", backgroundColor: "#2563eb", padding: 8, borderTopLeftRadius: 4, borderTopRightRadius: 4, alignItems: "center" },
   tableHeaderText: { color: "#ffffff", fontSize: 9, fontWeight: "bold", textAlign: "center" },
   tableRow: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#e5e7eb", borderBottomStyle: "solid", paddingTop: 8, paddingBottom: 8, paddingLeft: 8, paddingRight: 8, alignItems: "center" },
-  
+
   colImg: { width: "15%", alignItems: "center", justifyContent: "center" },
-  colDesc: { width: "40%", paddingRight: 5, justifyContent: "center"},
+  colDesc: { width: "40%", paddingRight: 5, justifyContent: "center" },
   colDescHeader: { width: "40%" },
   colQty: { width: "10%", textAlign: "center" },
   colUnit: { width: "15%", textAlign: "right" },
@@ -152,7 +155,7 @@ const styles = StyleSheet.create({
   totalDivider: { borderTopWidth: 1, borderTopColor: "#e5e7eb", borderTopStyle: "solid", marginVertical: 5 },
   totalTextFinal: { fontSize: 11, color: "#6b7280", fontWeight: "bold", textTransform: "uppercase" },
   totalValueFinal: { fontSize: 16, fontWeight: "bold", color: "#111827", textAlign: "right" },
-  
+
   // 🚀 ADICIONADO: Estilos para o bloco de Prazo e Forma de Pagamento
   infoSection: { marginBottom: 15 },
   infoRow: { flexDirection: "row", marginBottom: 4 },
@@ -160,9 +163,9 @@ const styles = StyleSheet.create({
   infoValue: { fontSize: 10, color: "#4b5563", flex: 1 },
 
   obsSection: { marginBottom: 20 },
-  obsTitle: { fontSize: 10, color: "#9ca3af", marginBottom:1, textTransform: "uppercase" },
+  obsTitle: { fontSize: 10, color: "#9ca3af", marginBottom: 1, textTransform: "uppercase" },
   obsText: { fontSize: 10, color: "#4b5563", lineHeight: 1.5, backgroundColor: "#f9fafb", padding: 6, borderRadius: 6 },
-  
+
   anexosSection: { backgroundColor: "#eff6ff", padding: 12, borderRadius: 6, borderLeftWidth: 4, borderLeftColor: "#3b82f6", borderLeftStyle: "solid", marginBottom: 20 },
   anexosTitle: { fontSize: 10, color: "#1e3a8a", fontWeight: "bold", textTransform: "uppercase", marginBottom: 6 },
   anexosLink: { fontSize: 9, color: "#2563eb", textDecoration: "underline", marginBottom: 4 },
@@ -183,26 +186,58 @@ const styles = StyleSheet.create({
   continueText: { position: "absolute", bottom: 35, right: 40, fontSize: 8, color: "#2563eb", fontWeight: "bold" },
 });
 
-const BlocoAssinaturas = ({ dados }: { dados: DadosImpressao }) => (
-  <View wrap={false}>
-    <View style={styles.signaturesContainer}>
-      <View style={styles.signatureBlock}>
-        <View style={styles.signatureLine} />
-        <Text style={styles.signatureText}>{dados.empresa?.nome_fantasia || "Assinatura Comercial"}</Text>
-        <Text style={styles.signatureRole}>Departamento de Vendas</Text>
+const BlocoAssinaturas = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }) => {
+  if (isOP) {
+    const vendedor = Array.isArray(dados.orcamento.vendedores) ? dados.orcamento.vendedores[0] : dados.orcamento.vendedores;
+    return (
+      <View wrap={false} style={{ marginTop: 40, marginBottom: 10 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-around", marginBottom: 40 }}>
+          <View style={{ width: "40%", alignItems: "center" }}>
+            <View style={styles.signatureLine} />
+            <Text style={styles.signatureText}>Gerente</Text>
+          </View>
+          <View style={{ width: "40%", alignItems: "center" }}>
+            <View style={styles.signatureLine} />
+            <Text style={styles.signatureText}>Jaime</Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
+          <View style={{ width: "40%", alignItems: "center" }}>
+            <View style={styles.signatureLine} />
+            <Text style={styles.signatureText}>Financeiro</Text>
+          </View>
+          <View style={{ width: "40%", alignItems: "center" }}>
+            <View style={styles.signatureLine} />
+            <Text style={styles.signatureText}>{vendedor?.nome || "Vendedor"}</Text>
+            {vendedor?.email && <Text style={{ fontSize: 8, color: "#2563eb", marginTop: 2 }}>{vendedor.email}</Text>}
+            <Text style={styles.signatureRole}>Já Assinado Digitalmente</Text>
+          </View>
+        </View>
       </View>
-      <View style={styles.signatureBlock}>
-        <View style={styles.signatureLine} />
-        <Text style={styles.signatureText}>{dados.cliente?.nome_razao_social || "Assinatura do Cliente"}</Text>
-        <Text style={styles.signatureRole}>De acordo com os termos</Text>
+    );
+  }
+
+  return (
+    <View wrap={false}>
+      <View style={styles.signaturesContainer}>
+        <View style={styles.signatureBlock}>
+          <View style={styles.signatureLine} />
+          <Text style={styles.signatureText}>{dados.empresa?.nome_fantasia || "Assinatura Comercial"}</Text>
+          <Text style={styles.signatureRole}>Departamento de Vendas</Text>
+        </View>
+        <View style={styles.signatureBlock}>
+          <View style={styles.signatureLine} />
+          <Text style={styles.signatureText}>{dados.cliente?.nome_razao_social || "Assinatura do Cliente"}</Text>
+          <Text style={styles.signatureRole}>De acordo com os termos</Text>
+        </View>
       </View>
     </View>
-  </View>
-);
+  );
+};
 
-const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
-  const vendedor = Array.isArray(dados.orcamento.vendedores) 
-    ? dados.orcamento.vendedores[0] 
+const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }) => {
+  const vendedor = Array.isArray(dados.orcamento.vendedores)
+    ? dados.orcamento.vendedores[0]
     : dados.orcamento.vendedores;
 
   const totalBruto = dados.itens?.reduce((acc, item) => acc + (item.quantidade * item.valor_unitario_aplicado), 0) || 0;
@@ -232,7 +267,7 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
         <View style={styles.header}>
           <View style={styles.logoContainer}>
             {dados.empresa?.logo_url ? <PDFImage src={dados.empresa.logo_url} style={styles.logo} /> : null}
-            
+
             <View style={styles.companyTextWrapper}>
               {dados.empresa?.cnpj ? <Text style={styles.companyText}>CNPJ: {dados.empresa.cnpj}</Text> : null}
               {dados.empresa?.telefone ? <Text style={styles.companyText}>Tel: {dados.empresa.telefone}</Text> : null}
@@ -240,14 +275,17 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
               {enderecoEmpresa.linha2 ? <Text style={styles.companyText}>{enderecoEmpresa.linha2}</Text> : null}
             </View>
           </View>
-          
+
           <View style={styles.invoiceTitleBlock}>
-            <Text style={styles.invoiceTitle}>ORÇAMENTO</Text>
+            <Text style={styles.invoiceTitle}>{isOP ? "ORDEM DE\nPRODUÇÃO" : "ORÇAMENTO"}</Text>
             <Text style={styles.invoiceDetails}>Nº: {String(dados.orcamento.numero_orcamento || 0).padStart(5, '0')}</Text>
             <Text style={styles.invoiceDetails}>Emissão: {formatarData(dados.orcamento.data_emissao)}</Text>
-            
+
             {vendedor ? (
-              <Text style={[styles.invoiceDetails, { marginTop: 4 }]}>Vendedor: {vendedor.nome}</Text>
+              <>
+                <Text style={[styles.invoiceDetails, { marginTop: 4 }]}>Vendedor: {vendedor.nome}</Text>
+                {vendedor.email && <Text style={styles.invoiceDetails}>{vendedor.email}</Text>}
+              </>
             ) : null}
             {vendedor?.telefone ? (
               <Text style={styles.invoiceDetails}>Tel: {vendedor.telefone}</Text>
@@ -258,12 +296,12 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
         <View style={styles.clientSection}>
           <Text style={styles.clientTitle}>Preparado Para:</Text>
           <Text style={styles.clientName}>{dados.cliente?.nome_razao_social || "Cliente"}</Text>
-          
+
           <View style={styles.clientGridRow}>
             <Text style={styles.clientGridCol}><Text style={styles.clientLabel}>CNPJ/CPF: </Text>{dados.cliente?.cpf_cnpj || "-"}</Text>
             <Text style={styles.clientGridCol}><Text style={styles.clientLabel}>Contato: </Text>{dados.cliente?.contato_nome || "-"}</Text>
           </View>
-          
+
           <View style={styles.clientGridRow}>
             <Text style={styles.clientGridCol}><Text style={styles.clientLabel}>Telefone: </Text>{dados.cliente?.telefone || "-"}</Text>
             <Text style={styles.clientGridCol}></Text>
@@ -275,15 +313,27 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
               {enderecoCliente.linha1} {enderecoCliente.linha2 ? ` - ${enderecoCliente.linha2}` : ""}
             </Text>
           </View>
+
+          {isOP && (dados.orcamento.endereco_obra || dados.orcamento.contato_obra) && (
+            <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#e5e7eb", borderTopStyle: "solid" }}>
+              <Text style={styles.clientTitle}>Dados da Obra:</Text>
+              {dados.orcamento.contato_obra ? (
+                <Text style={{ fontSize: 10, color: "#4b5563", marginBottom: 4 }}><Text style={styles.clientLabel}>Contato/Resp: </Text>{dados.orcamento.contato_obra}</Text>
+              ) : null}
+              {dados.orcamento.endereco_obra ? (
+                <Text style={{ fontSize: 10, color: "#4b5563" }}><Text style={styles.clientLabel}>Endereço: </Text>{dados.orcamento.endereco_obra}</Text>
+              ) : null}
+            </View>
+          )}
         </View>
 
         <View style={styles.table}>
           <View style={styles.tableHeader} fixed>
             <View style={styles.colImg}><Text style={styles.tableHeaderText}>Imagem</Text></View>
-            <View style={styles.colDescHeader}><Text style={styles.tableHeaderText}>Descrição do Serviço / Produto</Text></View>
+            <View style={isOP ? { ...styles.colDescHeader, width: "75%" } : styles.colDescHeader}><Text style={styles.tableHeaderText}>Descrição do Serviço / Produto</Text></View>
             <View style={styles.colQty}><Text style={styles.tableHeaderText}>Qtd</Text></View>
-            <View style={styles.colUnit}><Text style={styles.tableHeaderText}>V. Unit</Text></View>
-            <View style={styles.colTotal}><Text style={styles.tableHeaderText}>Subtotal</Text></View>
+            {!isOP && <View style={styles.colUnit}><Text style={styles.tableHeaderText}>V. Unit</Text></View>}
+            {!isOP && <View style={styles.colTotal}><Text style={styles.tableHeaderText}>Subtotal</Text></View>}
           </View>
 
           {dados.itens?.map((item: ItemOrcamento, index: number) => {
@@ -293,54 +343,56 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
                 <View style={styles.colImg}>
                   {urlDaImagem ? <PDFImage src={urlDaImagem} style={styles.itemImage} /> : <Text style={{ fontSize: 8, color: "#9ca3af" }}>-</Text>}
                 </View>
-                <View style={styles.colDesc}>
+                <View style={isOP ? { ...styles.colDesc, width: "75%" } : styles.colDesc}>
                   <Text style={styles.tableCell}>{item.descricao || "Item"}</Text>
                   {item.medidas ? <Text style={styles.medidasText}>Medidas: {item.medidas}</Text> : null}
                 </View>
                 <Text style={[styles.colQty, styles.tableCell]}>{String(item.quantidade || 0)}</Text>
-                <Text style={[styles.colUnit, styles.tableCell]}>{formatarMoeda(item.valor_unitario_aplicado)}</Text>
-                <Text style={[styles.colTotal, styles.tableCell]}>{formatarMoeda(item.subtotal)}</Text>
+                {!isOP && <Text style={[styles.colUnit, styles.tableCell]}>{formatarMoeda(item.valor_unitario_aplicado)}</Text>}
+                {!isOP && <Text style={[styles.colTotal, styles.tableCell]}>{formatarMoeda(item.subtotal)}</Text>}
               </View>
             );
           })}
         </View>
 
-        <View style={styles.totalSection} wrap={false}>
-          <View style={styles.totalBox}>
-            <View style={styles.totalRow}>
-              <Text style={styles.totalTextNormal}>Subtotal Bruto:</Text>
-              <Text style={styles.totalTextNormal}>{formatarMoeda(totalBruto)}</Text>
-            </View>
-            
-            <View style={styles.totalDivider} />
-            <View style={[styles.totalRow, { marginTop: 5, alignItems: "center" }]}>
-              <Text style={styles.totalTextFinal}>Valor Total</Text>
-              <Text style={styles.totalValueFinal}>{formatarMoeda(dados.orcamento.valor_total)}</Text>
-            </View>
-            {totalDescontos > 0 && (
+        {!isOP && (
+          <View style={styles.totalSection} wrap={false}>
+            <View style={styles.totalBox}>
               <View style={styles.totalRow}>
-                <Text style={styles.totalTextDiscount}>Descontos Aplicados:</Text>
-                <Text style={styles.totalTextDiscount}>- {formatarMoeda(totalDescontos)}</Text>
+                <Text style={styles.totalTextNormal}>Subtotal Bruto:</Text>
+                <Text style={styles.totalTextNormal}>{formatarMoeda(totalBruto)}</Text>
               </View>
-            )}
-            {(dados.orcamento.prazo || dados.orcamento.forma_pagamento) ? (
-          <View style={styles.infoSection} wrap={false}>
-            {dados.orcamento.prazo ? (
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Prazo:</Text>
-                <Text style={styles.infoValue}>{dados.orcamento.prazo}</Text>
+
+              <View style={styles.totalDivider} />
+              <View style={[styles.totalRow, { marginTop: 5, alignItems: "center" }]}>
+                <Text style={styles.totalTextFinal}>Valor Total</Text>
+                <Text style={styles.totalValueFinal}>{formatarMoeda(dados.orcamento.valor_total)}</Text>
               </View>
-            ) : null}
-            {dados.orcamento.forma_pagamento ? (
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Forma de Pagamento:</Text>
-                <Text style={styles.infoValue}>{dados.orcamento.forma_pagamento}</Text>
-              </View>
-            ) : null}
+              {totalDescontos > 0 && (
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalTextDiscount}>Descontos Aplicados:</Text>
+                  <Text style={styles.totalTextDiscount}>- {formatarMoeda(totalDescontos)}</Text>
+                </View>
+              )}
+              {(dados.orcamento.prazo || dados.orcamento.forma_pagamento) ? (
+                <View style={styles.infoSection} wrap={false}>
+                  {dados.orcamento.prazo ? (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Prazo:</Text>
+                      <Text style={styles.infoValue}>{dados.orcamento.prazo}</Text>
+                    </View>
+                  ) : null}
+                  {dados.orcamento.forma_pagamento ? (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Forma de Pagamento:</Text>
+                      <Text style={styles.infoValue}>{dados.orcamento.forma_pagamento}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
           </View>
-        ) : null}
-          </View>
-        </View>
+        )}
 
         {dados.orcamento.observacoes ? (
           <View style={styles.obsSection} wrap={false}>
@@ -349,11 +401,11 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
           </View>
         ) : null}
         <View style={styles.obsSection}>
-      <Text style={styles.obsTitle}>Informações Importantes:</Text>
-      <Text style={styles.obsText}>Os serviços só poderão ser executados mediante autorização do cliente.
-        {"\n"}Licença junto à Prefeitura é de responsabilidade do cliente.
-        {"\n"}O cliente deverá fornecer ponto de energia junto ao local de instalação do letreiro.
-      </Text>
+          <Text style={styles.obsTitle}>Informações Importantes:</Text>
+          <Text style={styles.obsText}>Os serviços só poderão ser executados mediante autorização do cliente.
+            {"\n"}Licença junto à Prefeitura é de responsabilidade do cliente.
+            {"\n"}O cliente deverá fornecer ponto de energia junto ao local de instalação do letreiro.
+          </Text>
         </View>
 
         {dados.anexos && dados.anexos.length > 0 ? (
@@ -370,12 +422,12 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
           </View>
         ) : null}
 
-        <BlocoAssinaturas dados={dados} />
+        <BlocoAssinaturas dados={dados} isOP={isOP} />
 
         <Text style={styles.fixedFooterText} fixed>
           Este documento tem validade de 15 dias a partir da data de emissão.
         </Text>
-        
+
         <Text render={({ pageNumber, totalPages }) => (
           pageNumber < totalPages ? "CONTINUA NA PRÓXIMA PÁGINA" : ""
         )} fixed style={styles.continueText} />
@@ -389,13 +441,13 @@ const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
       {imagensAnexas.map((img, idx) => (
         <Page key={`anexo-${idx}`} size="A4" style={styles.page}>
           <Text style={[styles.invoiceTitle, { fontSize: 16, marginBottom: 15 }]}>ANEXO: {img.file_name}</Text>
-          
+
           <View style={{ flex: 1, marginVertical: 10, alignItems: "center", justifyContent: "center" }}>
             <PDFImage src={img.file_url} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
           </View>
 
-          <BlocoAssinaturas dados={dados} />
-          
+          <BlocoAssinaturas dados={dados} isOP={isOP} />
+
           <Text style={styles.fixedFooterText} fixed>Este documento tem validade de 15 dias a partir da data de emissão.</Text>
           <Text render={({ pageNumber, totalPages }) => (`Página ${pageNumber} de ${totalPages}`)} fixed style={styles.pageNumber} />
         </Page>
@@ -421,7 +473,7 @@ export default function ImprimirOrcamento() {
           .select(`
             *, 
             clientes ( nome_razao_social, cpf_cnpj, telefone, endereco, contato_nome, rua_numero, bairro, cidade, uf ),
-            vendedores ( nome, telefone )
+            vendedores ( nome, telefone, email )
           `)
           .eq("id", id)
           .single();
@@ -438,7 +490,7 @@ export default function ImprimirOrcamento() {
         const { data: empresa } = await supabase
           .from("empresa_perfil")
           .select("*")
-          .eq("user_id", orcamento.user_id)
+          .limit(1)
           .single();
 
         const { data: anexosData } = await supabase
@@ -451,10 +503,11 @@ export default function ImprimirOrcamento() {
           cliente: Array.isArray(orcamento.clientes) ? orcamento.clientes[0] : (orcamento.clientes as unknown as Cliente),
           itens: itens as ItemOrcamento[],
           empresa: empresa as Empresa | null,
-          anexos: (anexosData as Anexo[]) || [] 
+          anexos: (anexosData as Anexo[]) || []
         };
 
-        const blob = await pdf(<OrcamentoPDF dados={dadosCompletos} />).toBlob();
+        const isOP = action === "op";
+        const blob = await pdf(<OrcamentoPDF dados={dadosCompletos} isOP={isOP} />).toBlob();
         const urlCriada = URL.createObjectURL(blob);
 
         if (action === "download") {

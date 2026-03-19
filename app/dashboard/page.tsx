@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "../lib/supabase"; 
+import { supabase } from "../lib/supabase";
 import Link from "next/link";
+import { usePerfilUsuario } from "../hooks/usePerfilUsuario";
 
 interface ResumoDashboard {
   totalOrcamentos: number;
@@ -21,6 +22,10 @@ interface UltimoOrcamento {
   clientes: {
     nome_razao_social: string;
   };
+  vendedores?: {
+    nome: string;
+    email?: string;
+  } | null;
 }
 
 export default function DashboardPage() {
@@ -34,9 +39,13 @@ export default function DashboardPage() {
   const [mesSelecionado, setMesSelecionado] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [diaSelecionado, setDiaSelecionado] = useState(new Date().toISOString().slice(0, 10)); // YYYY-MM-DD
 
+  const { isAdmin, loadingPerfil } = usePerfilUsuario();
+
   useEffect(() => {
-    carregarDashboard();
-  }, []);
+    if (!loadingPerfil) {
+      carregarDashboard();
+    }
+  }, [loadingPerfil]);
 
   // 🚀 RECALCULA TUDO AUTOMATICAMENTE QUANDO O FILTRO MUDA
   useEffect(() => {
@@ -44,9 +53,9 @@ export default function DashboardPage() {
 
     const orcamentosFiltrados = todosOrcamentosBrutos.filter(orc => {
       if (tipoFiltro === "todos") return true;
-      
+
       // Pega a data ignorando o fuso horário complexo
-      const dataBase = (orc.data_emissao || orc.created_at).split("T")[0]; 
+      const dataBase = (orc.data_emissao || orc.created_at).split("T")[0];
 
       if (tipoFiltro === "mes" && mesSelecionado) {
         return dataBase.startsWith(mesSelecionado); // Ex: "2026-03-15" começa com "2026-03"
@@ -58,7 +67,7 @@ export default function DashboardPage() {
     });
 
     const valor = orcamentosFiltrados.reduce((acc, curr) => acc + Number(curr.valor_total), 0);
-    
+
     setResumo(prev => ({
       ...prev,
       valorTotal: valor,
@@ -75,13 +84,20 @@ export default function DashboardPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      let orcamentosQuery = supabase
+        .from("orcamentos")
+        .select(`id, numero_orcamento, data_emissao, created_at, valor_total, status, clientes ( nome_razao_social ), vendedores ( nome, email )`)
+        .order("numero_orcamento", { ascending: false });
+
+      if (!isAdmin) {
+        orcamentosQuery = orcamentosQuery.eq("user_id", user.id);
+      }
+
       // Puxa TUDO de uma vez só (Super rápido)
       const [contagemClientes, contagemProdutos, todosOrc] = await Promise.all([
-        supabase.from("clientes").select("id", { count: "exact", head: true }).eq("user_id", user.id),
-        supabase.from("produtos").select("id", { count: "exact", head: true }).eq("user_id", user.id),
-        supabase.from("orcamentos").select(`id, numero_orcamento, data_emissao, created_at, valor_total, status, clientes ( nome_razao_social )`)
-          .eq("user_id", user.id)
-          .order("numero_orcamento", { ascending: false })
+        supabase.from("clientes").select("id", { count: "exact", head: true }),
+        supabase.from("produtos").select("id", { count: "exact", head: true }),
+        orcamentosQuery
       ]);
 
       if (todosOrc.data) {
@@ -119,21 +135,62 @@ export default function DashboardPage() {
     );
   }
 
+  // =========================================================================
+  // 👔 VISÃO DO VENDEDOR (Simplificada)
+  // =========================================================================
+  if (!isAdmin) {
+    return (
+      <div className="p-4 md:p-8 max-w-7xl mx-auto flex flex-col items-center justify-center min-h-[80vh]">
+        <div className="bg-white p-10 md:p-16 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center max-w-2xl w-full animate-fade-in">
+          
+          <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-6 shadow-inner">
+            <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </div>
+
+          <h1 className="text-3xl md:text-4xl font-black text-gray-900 mb-3 tracking-tight">
+            Seja Bem-vindo(a)!
+          </h1>
+          
+          <p className="text-gray-500 text-lg mb-10 max-w-md leading-relaxed">
+            Aqui você pode gerenciar seus clientes e gerar novos orçamentos de forma rápida e profissional.
+          </p>
+
+          <Link 
+            href="/dashboard/orcamentos" 
+            className="group relative inline-flex items-center justify-center gap-3 px-8 py-4 font-bold text-white bg-blue-600 rounded-xl overflow-hidden transition-all hover:bg-blue-700 hover:scale-105 hover:shadow-xl hover:shadow-blue-200/50 focus:outline-none focus:ring-4 focus:ring-blue-300"
+          >
+            <svg className="w-6 h-6 transition-transform group-hover:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4"></path></svg>
+            <span>Criar Novo Orçamento</span>
+          </Link>
+
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // 👑 VISÃO DO ADMINISTRADOR (Completa com Aprovações)
+  // =========================================================================
+
+  const orcamentosParaAprovar = ultimosOrcamentos.filter(orc => orc.status === "Aberto");
+
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
-      
-      {/* Cabeçalho de Boas-Vindas */}
+
+      {/* Cabeçalho */}
       <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Visão Geral</h1>
-        <p className="text-gray-500 mt-1">Acompanhe o desempenho do seu negócio em tempo real.</p>
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Visão Geral da Empresa</h1>
+        <p className="text-gray-500 mt-1">Acompanhe o desempenho de todos os vendedores.</p>
       </div>
 
-      {/* 🚀 FILTRO INTELIGENTE */}
+      {/* FILTRO INTELIGENTE */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 md:items-center">
         <div className="flex items-center gap-3">
           <span className="text-sm font-bold text-gray-500 uppercase tracking-wider">Período:</span>
-          <select 
-            value={tipoFiltro} 
+          <select
+            value={tipoFiltro}
             onChange={(e) => setTipoFiltro(e.target.value)}
             className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium transition-all"
           >
@@ -145,8 +202,8 @@ export default function DashboardPage() {
 
         {tipoFiltro === "mes" && (
           <div className="animate-fade-in w-full md:w-auto">
-            <input 
-              type="month" 
+            <input
+              type="month"
               value={mesSelecionado}
               onChange={(e) => setMesSelecionado(e.target.value)}
               className="w-full md:w-auto px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 transition-all"
@@ -156,8 +213,8 @@ export default function DashboardPage() {
 
         {tipoFiltro === "dia" && (
           <div className="animate-fade-in w-full md:w-auto">
-            <input 
-              type="date" 
+            <input
+              type="date"
               value={diaSelecionado}
               onChange={(e) => setDiaSelecionado(e.target.value)}
               className="w-full md:w-auto px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 transition-all"
@@ -168,7 +225,6 @@ export default function DashboardPage() {
 
       {/* BLOCO 1: CARDS DE RESUMO (GRID) */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mt-4">
-        
         {/* Card 1: Valor Financeiro */}
         <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-6 shadow-md text-white">
           <div className="flex justify-between items-start mb-4">
@@ -221,20 +277,85 @@ export default function DashboardPage() {
             <h3 className="text-2xl font-black text-gray-900">{resumo.totalProdutos}</h3>
           </div>
         </div>
-
       </div>
+
+      {/* 🚨 BLOCO NOVO: AGUARDANDO APROVAÇÃO (SOMENTE SE TIVER) */}
+      {orcamentosParaAprovar.length > 0 && (
+        <div className="bg-orange-50/50 border-2 border-orange-200 rounded-2xl shadow-sm overflow-hidden mt-8 animate-fade-in relative">
+          
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-500"></div>
+
+          <div className="p-6 border-b border-orange-100 flex flex-col md:flex-row md:justify-between md:items-center gap-4 bg-white/50">
+            <div className="flex items-center gap-3">
+              <div className="bg-orange-100 text-orange-600 p-2.5 rounded-xl shadow-inner">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Aguardando Aprovação</h2>
+                <p className="text-sm text-gray-500">Foram enviados {orcamentosParaAprovar.length} orçamentos pelos vendedores.</p>
+              </div>
+            </div>
+            
+            <Link 
+              href="/dashboard/historico" 
+              className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-2.5 px-6 rounded-lg transition-colors shadow-sm text-sm text-center"
+            >
+              Analisar no Histórico
+            </Link>
+          </div>
+
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {orcamentosParaAprovar.slice(0, 3).map((orc) => (
+                <div key={orc.id} className="bg-white border border-orange-100 rounded-xl p-4 shadow-sm relative group hover:border-orange-300 transition-colors">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="font-bold text-gray-900 text-base">#{String(orc.numero_orcamento).padStart(5, '0')}</span>
+                    <span className="bg-orange-100 text-orange-700 text-[10px] font-bold px-2 py-1 rounded-md tracking-wide">
+                      Vend: {orc.vendedores?.nome || "Admin"}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-gray-800 truncate mb-4" title={Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : orc.clientes?.nome_razao_social}>
+                    {Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : orc.clientes?.nome_razao_social}
+                  </p>
+                  <div className="flex justify-between items-end border-t border-gray-50 pt-3">
+                    <p className="text-xs text-gray-500">{formatarData(orc.data_emissao)}</p>
+                    <p className="font-black text-orange-600 text-lg">{formatarMoeda(orc.valor_total)}</p>
+                  </div>
+                  
+                  {/* Botão de Ver Documento escondido até o HOVER (só desktop) */}
+                  <div className="absolute inset-0 bg-white/95 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-xl">
+                    <button
+                      onClick={() => window.open(`/imprimir/${orc.id}?action=view`, "_blank")}
+                      className="bg-gray-900 text-white text-xs font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-transform transform scale-95 group-hover:scale-100"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                      Visualizar PDF
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {orcamentosParaAprovar.length > 3 && (
+                <Link href="/dashboard/historico" className="bg-orange-50 border border-orange-200 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-orange-700 hover:bg-orange-100 transition-colors">
+                  <span className="font-bold text-lg mb-1">+{orcamentosParaAprovar.length - 3}</span>
+                  <span className="text-sm font-medium">Ver todos</span>
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* BLOCO 2: ACESSO RÁPIDO AOS ÚLTIMOS ORÇAMENTOS */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-8">
         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
           <h2 className="text-lg font-bold text-gray-900">
-            {tipoFiltro === "todos" ? "Últimos Orçamentos" : "Orçamentos do Período"}
+            {tipoFiltro === "todos" ? "Histórico Recente" : "Histórico do Período"}
           </h2>
           <Link href="/dashboard/historico" className="text-sm font-bold text-blue-600 hover:text-blue-800 transition-colors">
-            Ver Histórico →
+            Ver Todos →
           </Link>
         </div>
-        
+
         {ultimosOrcamentos.length === 0 ? (
           <div className="p-10 flex flex-col items-center justify-center text-center">
             <div className="bg-gray-50 p-4 rounded-full mb-4">
@@ -258,20 +379,23 @@ export default function DashboardPage() {
                         {Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : orc.clientes?.nome_razao_social}
                       </p>
                     </div>
-                    <button 
+                    <button
                       onClick={() => window.open(`/imprimir/${orc.id}?action=view`, "_blank")}
                       className="p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors focus:outline-none"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
                     </button>
                   </div>
-                  
+
                   <div className="flex justify-between items-end mt-4">
                     <div className="space-y-1.5">
                       <p className="text-xs text-gray-500 font-medium">{formatarData(orc.data_emissao)}</p>
-                      <span className={`inline-block px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md ${
-                        orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' : 'bg-gray-100 text-gray-600'
-                      }`}>
+                      <span className={`inline-block px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                          orc.status === 'Aberto' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                            orc.status === 'Aprovado' ? 'bg-green-50 text-green-700 border-green-200' :
+                              orc.status === 'Recusado' ? 'bg-red-50 text-red-700 border-red-200' :
+                                'bg-gray-100 text-gray-600 border-gray-200'
+                        }`}>
                         {orc.status}
                       </span>
                     </div>
@@ -297,21 +421,24 @@ export default function DashboardPage() {
                   {ultimosOrcamentos.map((orc) => (
                     <tr key={orc.id} className="hover:bg-gray-50 transition-colors">
                       <td className="py-4 px-6 text-gray-900 font-bold">#{String(orc.numero_orcamento).padStart(5, '0')}</td>
-                      <td className="py-4 px-6 text-gray-800 font-medium">
+                      <td className="py-4 px-6 text-gray-800 font-medium whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]" title={Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : orc.clientes?.nome_razao_social}>
                         {Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : orc.clientes?.nome_razao_social}
                       </td>
                       <td className="py-4 px-6">
-                        <span className={`px-3 py-1 text-xs font-bold rounded-md ${
-                          orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' : 'bg-gray-100 text-gray-600'
-                        }`}>
+                        <span className={`px-3 py-1 text-xs font-bold rounded-md border ${orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                            orc.status === 'Aberto' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                              orc.status === 'Aprovado' ? 'bg-green-50 text-green-700 border-green-200' :
+                                orc.status === 'Recusado' ? 'bg-red-50 text-red-700 border-red-200' :
+                                  'bg-gray-100 text-gray-600 border-gray-200'
+                          }`}>
                           {orc.status}
                         </span>
                       </td>
                       <td className="py-4 px-6 text-right text-gray-900 font-bold">{formatarMoeda(orc.valor_total)}</td>
                       <td className="py-4 px-6 text-center">
-                        <button 
+                        <button
                           onClick={() => window.open(`/imprimir/${orc.id}?action=view`, "_blank")}
-                          className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-2 rounded-lg transition-colors font-medium text-sm flex items-center justify-center mx-auto gap-2"
+                          className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-4 py-2 rounded-lg transition-colors font-medium text-sm flex items-center justify-center mx-auto gap-2"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
                           Ver PDF

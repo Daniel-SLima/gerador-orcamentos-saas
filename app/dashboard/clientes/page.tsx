@@ -127,7 +127,7 @@ export default function ClientesPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase.from("clientes").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
+      const { data, error } = await supabase.from("clientes").select("*").order("created_at", { ascending: false });
       if (error) throw error;
       if (data) setClientes(data);
     } catch (error) {
