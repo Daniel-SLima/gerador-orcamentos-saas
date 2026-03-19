@@ -113,7 +113,7 @@ export default function PerfilEmpresa() {
         if (perfil.logo_url) setPreviewUrl(perfil.logo_url);
       }
 
-      const { data: listaVendedores } = await supabase.from("vendedores").select("*").eq("user_id", user.id).order("nome", { ascending: true });
+      const { data: listaVendedores } = await supabase.from("vendedores").select("*").order("nome", { ascending: true });
       if (listaVendedores) setVendedores(listaVendedores);
 
     } catch (error) {

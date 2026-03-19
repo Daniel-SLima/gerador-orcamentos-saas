@@ -85,6 +85,13 @@ function FormularioOrcamento() {
   const [arquivosAnexos, setArquivosAnexos] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 🚀 ESTADOS PARA DROPDOWNS COM BUSCA
+  const [buscaCliente, setBuscaCliente] = useState("");
+  const [dropdownClienteOpen, setDropdownClienteOpen] = useState(false);
+  
+  const [buscaVendedor, setBuscaVendedor] = useState("");
+  const [dropdownVendedorOpen, setDropdownVendedorOpen] = useState(false);
+
   useEffect(() => {
     carregarListasEPreencher();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -340,6 +347,13 @@ function FormularioOrcamento() {
 
   const formatarMoeda = (valor: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
 
+  // 🚀 PREPARANDO DADOS PARA OS DROPDOWNS DE BUSCA
+  const nomeClienteSelecionado = clientes.find(c => c.id === clienteId)?.nome_razao_social || "";
+  const clientesFiltrados = clientes.filter(c => c.nome_razao_social.toLowerCase().includes(buscaCliente.toLowerCase()));
+
+  const nomeVendedorSelecionado = vendedores.find(v => v.id === vendedorId)?.nome || "";
+  const vendedoresFiltrados = vendedores.filter(v => v.nome.toLowerCase().includes(buscaVendedor.toLowerCase()));
+
   if (loadingDados) return <div className="p-8 text-gray-500">Preparando gerador...</div>;
 
   return (
@@ -360,20 +374,68 @@ function FormularioOrcamento() {
           <input type="date" required value={dataEmissao} onChange={(e) => setDataEmissao(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium cursor-pointer" />
         </div>
 
-        <div className="md:col-span-5">
+        <div className="md:col-span-5 relative">
           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Cliente *</label>
-          <select value={clienteId} onChange={e => setClienteId(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium cursor-pointer">
-            <option value="">-- Selecione o Cliente --</option>
-            {clientes.map(c => <option key={c.id} value={c.id}>{c.nome_razao_social}</option>)}
-          </select>
+          <div className="relative">
+            <input 
+              type="text" 
+              placeholder="Digite para buscar..."
+              value={dropdownClienteOpen ? buscaCliente : nomeClienteSelecionado || ""}
+              onFocus={() => { setDropdownClienteOpen(true); setBuscaCliente(""); }}
+              onChange={(e) => { setBuscaCliente(e.target.value); setDropdownClienteOpen(true); }}
+              onBlur={() => setTimeout(() => setDropdownClienteOpen(false), 200)}
+              className="w-full p-3 pr-10 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium cursor-text"
+            />
+            <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+            </div>
+            {dropdownClienteOpen && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                <div onClick={() => { setClienteId(""); setDropdownClienteOpen(false); }} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-500 font-medium border-b border-gray-100">
+                  -- Limpar Seleção --
+                </div>
+                {clientesFiltrados.length > 0 ? clientesFiltrados.map(c => (
+                  <div key={c.id} onClick={() => { setClienteId(c.id); setDropdownClienteOpen(false); }} className="px-4 py-2.5 hover:bg-blue-50 cursor-pointer text-sm text-gray-800 transition-colors">
+                    {c.nome_razao_social}
+                  </div>
+                )) : (
+                  <div className="px-4 py-3 text-sm text-gray-500 text-center">Nenhum cliente encontrado</div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="md:col-span-4">
+        <div className="md:col-span-4 relative">
           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Vendedor Responsável</label>
-          <select value={vendedorId} onChange={e => setVendedorId(e.target.value)} className="w-full p-3 bg-blue-50/50 border border-blue-100 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-blue-900 font-medium cursor-pointer">
-            <option value="">-- Nenhum Vendedor --</option>
-            {vendedores.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
-          </select>
+          <div className="relative">
+            <input 
+              type="text" 
+              placeholder="Digite para buscar..."
+              value={dropdownVendedorOpen ? buscaVendedor : nomeVendedorSelecionado || ""}
+              onFocus={() => { setDropdownVendedorOpen(true); setBuscaVendedor(""); }}
+              onChange={(e) => { setBuscaVendedor(e.target.value); setDropdownVendedorOpen(true); }}
+              onBlur={() => setTimeout(() => setDropdownVendedorOpen(false), 200)}
+              className="w-full p-3 pr-10 bg-blue-50/50 border border-blue-100 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-blue-900 font-medium cursor-text"
+            />
+            <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+              <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+            </div>
+            {dropdownVendedorOpen && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-blue-100 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                <div onClick={() => { setVendedorId(""); setDropdownVendedorOpen(false); }} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-500 font-medium border-b border-gray-100">
+                  -- Selecionar Depois --
+                </div>
+                {vendedoresFiltrados.length > 0 ? vendedoresFiltrados.map(v => (
+                  <div key={v.id} onClick={() => { setVendedorId(v.id); setDropdownVendedorOpen(false); }} className="px-4 py-2.5 hover:bg-blue-50 cursor-pointer text-sm text-gray-800 transition-colors">
+                    {v.nome}
+                  </div>
+                )) : (
+                  <div className="px-4 py-3 text-sm text-gray-500 text-center">Nenhum vendedor encontrado</div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
 
