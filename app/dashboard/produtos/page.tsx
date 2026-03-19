@@ -23,7 +23,7 @@ export default function ProdutosPage() {
   const [codigoItem, setCodigoItem] = useState("");
   const [descricao, setDescricao] = useState("");
   const [medidas, setMedidas] = useState("");
-  const [valorUnitario, setValorUnitario] = useState("");
+  const [valorUnitario, setValorUnitario] = useState("0");
   const [imagemUrl, setImagemUrl] = useState(""); 
   const [message, setMessage] = useState("");
 
@@ -81,7 +81,7 @@ export default function ProdutosPage() {
     setCodigoItem("");
     setDescricao("");
     setMedidas("");
-    setValorUnitario("");
+    setValorUnitario("0");
     setImagemUrl("");
     setArquivoSelecionado(null);
     setPreviewUrl(null);
@@ -179,7 +179,7 @@ export default function ProdutosPage() {
     setCodigoItem(produto.codigo_item || "");
     setDescricao(produto.descricao || "");
     setMedidas(produto.medidas || "");
-    setValorUnitario(produto.valor_unitario ? produto.valor_unitario.toString() : "");
+    setValorUnitario(produto.valor_unitario !== undefined && produto.valor_unitario !== null ? produto.valor_unitario.toString() : "0");
     setImagemUrl(produto.imagem_url || "");
     setPreviewUrl(produto.imagem_url || null); 
     setArquivoSelecionado(null); 
