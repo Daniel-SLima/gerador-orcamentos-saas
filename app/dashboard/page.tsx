@@ -34,6 +34,10 @@ export default function DashboardPage() {
   const [todosOrcamentosBrutos, setTodosOrcamentosBrutos] = useState<UltimoOrcamento[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // 🚀 ESTADOS RANKINGS (NOVO)
+  const [rankingVendedores, setRankingVendedores] = useState<{nome: string, total: number, qtd: number}[]>([]);
+  const [rankingClientes, setRankingClientes] = useState<{nome: string, total: number, qtd: number}[]>([]);
+
   // 🚀 ESTADOS DOS FILTROS
   const [tipoFiltro, setTipoFiltro] = useState("todos"); // 'todos', 'mes', 'dia'
   const [mesSelecionado, setMesSelecionado] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
@@ -73,6 +77,35 @@ export default function DashboardPage() {
       valorTotal: valor,
       totalOrcamentos: orcamentosFiltrados.length
     }));
+
+    // 🏆 CÁLCULO DOS RANKINGS APENAS PARA APROVADOS
+    const mapVendedores = new Map<string, { nome: string, total: number, qtd: number }>();
+    const mapClientes = new Map<string, { nome: string, total: number, qtd: number }>();
+
+    orcamentosFiltrados.forEach(orc => {
+      if (orc.status === "Aprovado") {
+        const vTotal = Number(orc.valor_total);
+        
+        // Ranking Vendedor
+        const nomeVend = orc.vendedores?.nome || "Administrador";
+        const atualVend = mapVendedores.get(nomeVend) || { nome: nomeVend, total: 0, qtd: 0 };
+        atualVend.total += vTotal;
+        atualVend.qtd += 1;
+        mapVendedores.set(nomeVend, atualVend);
+
+        // Ranking Cliente
+        const nomeCli = Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : orc.clientes?.nome_razao_social;
+        if (nomeCli) {
+          const atualCli = mapClientes.get(nomeCli) || { nome: nomeCli, total: 0, qtd: 0 };
+          atualCli.total += vTotal;
+          atualCli.qtd += 1;
+          mapClientes.set(nomeCli, atualCli);
+        }
+      }
+    });
+
+    setRankingVendedores(Array.from(mapVendedores.values()).sort((a, b) => b.total - a.total).slice(0, 5));
+    setRankingClientes(Array.from(mapClientes.values()).sort((a, b) => b.total - a.total).slice(0, 5));
 
     // Atualiza a tabela rápida com os 5 mais recentes do período filtrado
     setUltimosOrcamentos(orcamentosFiltrados.slice(0, 5));
@@ -344,6 +377,85 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* 🏆 BLOCO DE ANÁLISES: RANKING DE VENDEDORES E CLIENTES */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+        {/* RANKING DE VENDEDORES */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-5 border-b border-gray-50 flex items-center gap-3">
+            <div className="bg-blue-50 text-blue-600 p-2 rounded-lg">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900 leading-tight">Melhores Vendedores</h3>
+              <p className="text-xs text-gray-500">Baseado em orçamentos Aprovados</p>
+            </div>
+          </div>
+          <div className="p-5">
+            {rankingVendedores.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-4">Nenhuma venda concluída no período.</p>
+            ) : (
+              <ul className="space-y-4">
+                {rankingVendedores.map((vend, index) => (
+                  <li key={index} className="flex items-center gap-4">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${index === 0 ? 'bg-yellow-100 text-yellow-700' : index === 1 ? 'bg-gray-100 text-gray-600 font-semibold' : index === 2 ? 'bg-orange-50 text-orange-800' : 'bg-transparent text-gray-400 font-normal'}`}>
+                      {index + 1}º
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex justify-between items-end mb-1">
+                        <span className="font-bold text-sm text-gray-800 truncate">{vend.nome}</span>
+                        <span className="font-black text-sm text-blue-600">{formatarMoeda(vend.total)}</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-1.5">
+                        <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${(vend.total / rankingVendedores[0].total) * 100}%` }}></div>
+                      </div>
+                      <span className="text-[10px] text-gray-400 font-medium">{vend.qtd} {vend.qtd === 1 ? 'venda' : 'vendas'}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        {/* RANKING DE CLIENTES */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-5 border-b border-gray-50 flex items-center gap-3">
+            <div className="bg-green-50 text-green-600 p-2 rounded-lg">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900 leading-tight">Melhores Clientes</h3>
+              <p className="text-xs text-gray-500">Baseado em orçamentos Aprovados</p>
+            </div>
+          </div>
+          <div className="p-5">
+            {rankingClientes.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-4">Nenhuma compra concluída no período.</p>
+            ) : (
+              <ul className="space-y-4">
+                {rankingClientes.map((cli, index) => (
+                  <li key={index} className="flex items-center gap-4">
+                     <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${index === 0 ? 'bg-yellow-100 text-yellow-700' : index === 1 ? 'bg-gray-100 text-gray-600 font-semibold' : index === 2 ? 'bg-orange-50 text-orange-800' : 'bg-transparent text-gray-400 font-normal'}`}>
+                      {index + 1}º
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex justify-between items-end mb-1">
+                        <span className="font-bold text-sm text-gray-800 truncate max-w-[180px]" title={cli.nome}>{cli.nome}</span>
+                        <span className="font-black text-sm text-green-600">{formatarMoeda(cli.total)}</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-1.5">
+                        <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${(cli.total / rankingClientes[0].total) * 100}%` }}></div>
+                      </div>
+                      <span className="text-[10px] text-gray-400 font-medium">{cli.qtd} {cli.qtd === 1 ? 'pedido' : 'pedidos'}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* BLOCO 2: ACESSO RÁPIDO AOS ÚLTIMOS ORÇAMENTOS */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-8">
