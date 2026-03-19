@@ -45,6 +45,7 @@ export default function PerfilEmpresa() {
     bairro: "",
     rua_numero: "",
     logo_url: "", 
+    cep: "",
   });
 
   const [arquivoSelecionado, setArquivoSelecionado] = useState<File | null>(null);
@@ -109,6 +110,7 @@ export default function PerfilEmpresa() {
           bairro: perfil.bairro || "",
           rua_numero: perfil.rua_numero || "",
           logo_url: perfil.logo_url || "",
+          cep: perfil.cep || "",
         });
         if (perfil.logo_url) setPreviewUrl(perfil.logo_url);
       }
@@ -323,14 +325,18 @@ export default function PerfilEmpresa() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-                <div className="md:col-span-3">
+                <div className="md:col-span-4 lg:col-span-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">CEP</label>
+                  <input type="text" name="cep" value={formData.cep} onChange={handleChange} className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none transition-all shadow-sm" placeholder="00000-000" />
+                </div>
+                <div className="md:col-span-4 lg:col-span-3">
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Estado</label>
                   <select name="uf" value={formData.uf} onChange={handleChange} className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none shadow-sm">
                     <option value="">UF</option>
                     {estados.map((est: EstadoIBGE) => <option key={est.sigla} value={est.sigla}>{est.sigla}</option>)}
                   </select>
                 </div>
-                <div className="md:col-span-9">
+                <div className="md:col-span-4 lg:col-span-6">
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Cidade</label>
                   <select name="cidade" value={formData.cidade} onChange={handleChange} disabled={!formData.uf || carregandoCidades} className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none shadow-sm disabled:bg-gray-100">
                     <option value="">{carregandoCidades ? "Carregando..." : "Selecione a cidade"}</option>

@@ -15,6 +15,7 @@ interface Cliente {
   bairro?: string;
   cidade?: string;
   uf?: string;
+  cep?: string;
 }
 
 interface Vendedor {
@@ -33,6 +34,7 @@ interface Empresa {
   bairro?: string;
   cidade?: string;
   uf?: string;
+  cep?: string;
 }
 
 interface ProdutoJoin {
@@ -61,6 +63,7 @@ interface Orcamento {
   forma_pagamento?: string;
   endereco_obra?: string;
   contato_obra?: string;
+  validade_proposta?: string; // 🚀 Adicionado para Validade da Proposta
 }
 
 interface Anexo {
@@ -113,13 +116,13 @@ const styles = StyleSheet.create({
 
   logoContainer: { width: "55%" },
   // Ajustes de margem negativa (marginLeft e marginTop) para alinhar a logo atual perfeitamente com o texto e o título
-  logo: { width: 160, height: 70, objectFit: "contain", marginBottom: 0, marginLeft: -10, marginTop: -15 },
+  logo: { width: 190, height: 85, objectFit: "contain", marginBottom: 0, marginLeft: -12, marginTop: -15 },
 
   companyTextWrapper: { paddingLeft: 12 },
   companyText: { fontSize: 9, color: "#374151", marginBottom: 1 },
 
   invoiceTitleBlock: { width: "45%", alignItems: "flex-end" },
-  invoiceTitle: { fontSize: 24, fontWeight: "bold", color: "#2563eb", marginBottom: 8 },
+  invoiceTitle: { fontSize: 18, fontWeight: "bold", color: "#2563eb", marginBottom: 8 },
   invoiceDetails: { fontSize: 10, color: "#4b5563", marginBottom: 3 },
 
   divider: { borderTopWidth: 1, borderTopColor: "#d1d5db", borderTopStyle: "solid", marginVertical: 5 },
@@ -163,9 +166,9 @@ const styles = StyleSheet.create({
   infoLabel: { fontSize: 10, fontWeight: "bold", color: "#6b7280", width: 130 },
   infoValue: { fontSize: 10, color: "#4b5563", flex: 1 },
 
-  obsSection: { marginBottom: 20 },
+  obsSection: { marginBottom: 20, width: "100%" },
   obsTitle: { fontSize: 10, color: "#9ca3af", marginBottom: 1, textTransform: "uppercase" },
-  obsText: { fontSize: 10, color: "#4b5563", lineHeight: 1.5, backgroundColor: "#f9fafb", padding: 6, borderRadius: 6 },
+  obsText: { fontSize: 10, color: "#4b5563", lineHeight: 1.5, backgroundColor: "#f9fafb", padding: 6, borderRadius: 6, width: "100%", flexShrink: 0 },
 
   anexosSection: { backgroundColor: "#eff6ff", padding: 12, borderRadius: 6, borderLeftWidth: 4, borderLeftColor: "#3b82f6", borderLeftStyle: "solid", marginBottom: 20 },
   anexosTitle: { fontSize: 10, color: "#1e3a8a", fontWeight: "bold", textTransform: "uppercase", marginBottom: 6 },
@@ -181,6 +184,9 @@ const styles = StyleSheet.create({
   termsBlock: { marginTop: 15, padding: 12, backgroundColor: "#f9fafb", borderRadius: 6 },
   termTitle: { fontSize: 9, color: "#9ca3af", fontWeight: "bold", textTransform: "uppercase", marginBottom: 6 },
   termLine: { fontSize: 9, color: "#4b5563", marginBottom: 3 },
+
+  introTextSection: { borderTopWidth: 1, borderTopColor: "#d1d5db", borderTopStyle: "solid", paddingTop: 8, marginBottom: 10 },
+  introText: { fontSize: 9, color: "#374151", textAlign: "left", fontStyle: "italic" },
 
   fixedFooterText: { position: "absolute", bottom: 25, left: 0, right: 0, fontSize: 8, color: "#9ca3af", textAlign: "center" },
   pageNumber: { position: "absolute", bottom: 12, left: 0, right: 0, fontSize: 8, color: "#9ca3af", textAlign: "center" },
@@ -224,7 +230,7 @@ const BlocoAssinaturas = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boole
         <View style={styles.signatureBlock}>
           <View style={styles.signatureLine} />
           <Text style={styles.signatureText}>{dados.empresa?.nome_fantasia || "Assinatura Comercial"}</Text>
-          <Text style={styles.signatureRole}>Departamento de Vendas</Text>
+          <Text style={styles.signatureRole}>Departamento Comercial</Text>
         </View>
         <View style={styles.signatureBlock}>
           <View style={styles.signatureLine} />
@@ -273,9 +279,12 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
               {dados.empresa?.cnpj ? <Text style={styles.companyText}>CNPJ: {dados.empresa.cnpj}</Text> : null}
               {dados.empresa?.telefone ? <Text style={styles.companyText}>Tel: {dados.empresa.telefone}</Text> : null}
               {enderecoEmpresa.linha1 || enderecoEmpresa.linha2 ? (
-                <Text style={styles.companyText}>
-                  {[enderecoEmpresa.linha1, enderecoEmpresa.linha2].filter(Boolean).join(" - ")}
-                </Text>
+                <>
+                  <Text style={styles.companyText}>
+                    {[enderecoEmpresa.linha1, enderecoEmpresa.linha2].filter(Boolean).join(" - ")}
+                  </Text>
+                  {dados.empresa?.cep ? <Text style={styles.companyText}>CEP: {dados.empresa.cep}</Text> : null}
+                </>
               ) : null}
             </View>
           </View>
@@ -311,11 +320,17 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
             <Text style={styles.clientGridCol}></Text>
           </View>
 
-          <View style={[styles.clientGridRow]}>
-            <Text style={{ fontSize: 10, color: "#4b5563", width: "100%" }}>
+          <View style={[styles.clientGridRow, { flexDirection: "column" }]}>
+            <Text style={{ fontSize: 10, color: "#4b5563", width: "100%", marginBottom: 2 }}>
               <Text style={styles.clientLabel}>Endereço: </Text>
               {enderecoCliente.linha1} {enderecoCliente.linha2 ? ` - ${enderecoCliente.linha2}` : ""}
             </Text>
+            {dados.cliente?.cep ? (
+              <Text style={{ fontSize: 10, color: "#4b5563", width: "100%" }}>
+                <Text style={styles.clientLabel}>CEP: </Text>
+                {dados.cliente.cep}
+              </Text>
+            ) : null}
           </View>
 
           {isOP && (dados.orcamento.endereco_obra || dados.orcamento.contato_obra) && (
@@ -329,6 +344,13 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
               ) : null}
             </View>
           )}
+        </View>
+
+        {/* Frase introdutória antes da tabela de produtos */}
+        <View style={styles.introTextSection}>
+          <Text style={styles.introText}>
+            Conforme solicitado, apresentamos nossa proposta para a confecção de produto(s) e/ou execução de serviço(s), conforme descrito abaixo:
+          </Text>
         </View>
 
         <View style={styles.table}>
@@ -349,7 +371,7 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
                 </View>
                 <View style={isOP ? { ...styles.colDesc, width: "75%" } : styles.colDesc}>
                   <Text style={styles.tableCell}>{item.descricao || "Item"}</Text>
-                  {item.medidas ? <Text style={styles.medidasText}>Medidas: {item.medidas}</Text> : null}
+                  {item.medidas ? <Text style={styles.medidasText}>{item.medidas}</Text> : null}
                 </View>
                 <Text style={[styles.colQty, styles.tableCell]}>{String(item.quantidade || 0)}</Text>
                 {!isOP && <Text style={[styles.colUnit, styles.tableCell]}>{formatarMoeda(item.valor_unitario_aplicado)}</Text>}
@@ -362,12 +384,18 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
         {!isOP && (
           <View style={styles.totalSection} wrap={false}>
             <View style={styles.totalBox}>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalTextNormal}>Subtotal Bruto:</Text>
-                <Text style={styles.totalTextNormal}>{formatarMoeda(totalBruto)}</Text>
-              </View>
+              
+              {/* Ocultar Subtotal Bruto se não houver desconto */}
+              {totalDescontos > 0 && (
+                <>
+                  <View style={styles.totalRow}>
+                    <Text style={styles.totalTextNormal}>Subtotal Bruto:</Text>
+                    <Text style={styles.totalTextNormal}>{formatarMoeda(totalBruto)}</Text>
+                  </View>
+                  <View style={styles.totalDivider} />
+                </>
+              )}
 
-              <View style={styles.totalDivider} />
               <View style={[styles.totalRow, { marginTop: 5, alignItems: "center" }]}>
                 <Text style={styles.totalTextFinal}>Valor Total</Text>
                 <Text style={styles.totalValueFinal}>{formatarMoeda(dados.orcamento.valor_total)}</Text>
@@ -396,6 +424,14 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
                       </Text>
                     </View>
                   ) : null}
+                  {dados.orcamento.validade_proposta ? (
+                    <View style={styles.infoRow}>
+                      <Text style={{ fontSize: 10, color: "#4b5563", width: "100%" }}>
+                        <Text style={{ fontWeight: "bold", color: "#6b7280" }}>Validade da Proposta: </Text>
+                        {dados.orcamento.validade_proposta}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
             </View>
@@ -403,16 +439,16 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
         )}
 
         {dados.orcamento.observacoes ? (
-          <View style={styles.obsSection} wrap={false}>
+          <View style={styles.obsSection}>
             <Text style={styles.obsTitle}>Observações e Condições:</Text>
-            <Text style={styles.obsText}>{dados.orcamento.observacoes}</Text>
+            <Text style={[styles.obsText, { width: "100%" }]}>{dados.orcamento.observacoes}</Text>
           </View>
         ) : null}
         <View style={styles.obsSection}>
           <Text style={styles.obsTitle}>Informações Importantes:</Text>
           <Text style={styles.obsText}>Os serviços só poderão ser executados mediante autorização do cliente.
             {"\n"}Licença junto à Prefeitura é de responsabilidade do cliente.
-            {"\n"}O cliente deverá fornecer ponto de energia junto ao local de instalação do letreiro.
+            {"\n"}O cliente deverá fornecer ponto de energia elétrica junto ao local de instalação do letreiro.
           </Text>
         </View>
 
@@ -432,9 +468,11 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
 
         <BlocoAssinaturas dados={dados} isOP={isOP} />
 
-        <Text style={styles.fixedFooterText} fixed>
-          Este documento tem validade de 15 dias a partir da data de emissão.
-        </Text>
+        <View style={{ marginTop: 30, alignItems: "center", paddingHorizontal: 20 }}>
+          <Text style={{ fontSize: 11, color: "#111827", fontWeight: "bold", textAlign: "center" }}>
+            A Salvador Comunicação Visual agradece a solicitação. Estamos à disposição para qualquer dúvida.
+          </Text>
+        </View>
 
         <Text render={({ pageNumber, totalPages }) => (
           pageNumber < totalPages ? "CONTINUA NA PRÓXIMA PÁGINA" : ""
@@ -456,7 +494,11 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
 
           <BlocoAssinaturas dados={dados} isOP={isOP} />
 
-          <Text style={styles.fixedFooterText} fixed>Este documento tem validade de 15 dias a partir da data de emissão.</Text>
+          <View style={{ marginTop: 30, alignItems: "center", paddingHorizontal: 20 }}>
+            <Text style={{ fontSize: 11, color: "#111827", fontWeight: "bold", textAlign: "center" }}>
+              A Salvador Comunicação Visual agradece a solicitação. Estamos à disposição para qualquer dúvida.
+            </Text>
+          </View>
           <Text render={({ pageNumber, totalPages }) => (`Página ${pageNumber} de ${totalPages}`)} fixed style={styles.pageNumber} />
         </Page>
       ))}
@@ -480,7 +522,7 @@ export default function ImprimirOrcamento() {
           .from("orcamentos")
           .select(`
             *, 
-            clientes ( nome_razao_social, cpf_cnpj, telefone, endereco, contato_nome, rua_numero, bairro, cidade, uf ),
+            clientes ( nome_razao_social, cpf_cnpj, telefone, endereco, contato_nome, rua_numero, bairro, cidade, uf, cep ),
             vendedores ( nome, telefone, email )
           `)
           .eq("id", id)

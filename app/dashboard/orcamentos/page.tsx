@@ -65,6 +65,7 @@ function FormularioOrcamento() {
   // 🚀 ADICIONADOS OS DOIS NOVOS ESTADOS AQUI
   const [prazo, setPrazo] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("");
+  const [validadeProposta, setValidadeProposta] = useState("");
   const [observacoes, setObservacoes] = useState("");
 
 
@@ -131,6 +132,7 @@ function FormularioOrcamento() {
           // 🚀 PUXANDO OS DADOS NOVOS DO BANCO
           setPrazo(orcData.prazo || "");
           setFormaPagamento(orcData.forma_pagamento || "");
+          setValidadeProposta(orcData.validade_proposta || "");
           setObservacoes(orcData.observacoes || "");
 
           if (orcData.data_emissao) {
@@ -275,6 +277,7 @@ function FormularioOrcamento() {
           valor_total: valorTotalOrcamento,
           prazo: prazo,
           forma_pagamento: formaPagamento,
+          validade_proposta: validadeProposta,
           observacoes: observacoes,
           data_emissao: dataEmissao
         }).eq("id", editId);
@@ -296,6 +299,7 @@ function FormularioOrcamento() {
           valor_total: valorTotalOrcamento,
           prazo: prazo,
           forma_pagamento: formaPagamento,
+          validade_proposta: validadeProposta,
           observacoes: observacoes,
           status: "Aberto",
           data_emissao: dataEmissao
@@ -602,14 +606,18 @@ function FormularioOrcamento() {
           <div className="bg-gray-50 p-6 border-t border-gray-200 flex flex-col md:flex-row justify-between items-start gap-6">
             <div className="w-full md:w-1/2 space-y-4">
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Prazo</label>
                   <textarea rows={2} value={prazo} onChange={e => setPrazo(e.target.value)} placeholder="Ex: 15 dias úteis" className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Forma de Pagamento</label>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Forma de Pag.</label>
                   <textarea rows={2} value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} placeholder="Ex: 50% entrada, 50% entrega" className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Validade Proposta</label>
+                  <textarea rows={2} value={validadeProposta} onChange={e => setValidadeProposta(e.target.value)} placeholder="Ex: 15 dias corridos" className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
                 </div>
               </div>
 
