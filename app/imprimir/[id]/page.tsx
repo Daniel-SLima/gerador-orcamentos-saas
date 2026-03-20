@@ -110,24 +110,24 @@ const montarEnderecoLinhas = (
 };
 
 const styles = StyleSheet.create({
-  page: { paddingTop: 30, paddingBottom: 60, paddingLeft: 40, paddingRight: 40, fontFamily: "Helvetica", backgroundColor: "#ffffff" },
+  page: { paddingTop: 185, paddingBottom: 60, paddingLeft: 40, paddingRight: 40, fontFamily: "Helvetica", backgroundColor: "#ffffff" },
 
-  header: { flexDirection: "row", justifyContent: "space-between", borderBottomWidth: 1.5, borderBottomColor: "#9ca3af", borderBottomStyle: "solid", paddingBottom: 15, marginBottom: 15 },
+  header: { position: "absolute", top: 30, left: 40, right: 40, flexDirection: "row", justifyContent: "space-between", borderBottomWidth: 1.5, borderBottomColor: "#9ca3af", borderBottomStyle: "solid", paddingBottom: 15 },
 
   logoContainer: { width: "55%" },
   // Ajustes de margem negativa (marginLeft e marginTop) para alinhar a logo atual perfeitamente com o texto e o título
-  logo: { width: 190, height: 85, objectFit: "contain", marginBottom: 0, marginLeft: -12, marginTop: -15 },
+  logo: { width: 230, height: 95, objectFit: "contain", marginBottom: 0, marginLeft: -23, marginTop: -20 },
 
-  companyTextWrapper: { paddingLeft: 12 },
+  companyTextWrapper: { paddingLeft: 12, marginTop: -15 },
   companyText: { fontSize: 9, color: "#374151", marginBottom: 1 },
 
   invoiceTitleBlock: { width: "45%", alignItems: "flex-end" },
-  invoiceTitle: { fontSize: 18, fontWeight: "bold", color: "#2563eb", marginBottom: 8 },
+  invoiceTitle: { fontSize: 13, fontWeight: "bold", color: "#2563eb", marginBottom: 8 },
   invoiceDetails: { fontSize: 10, color: "#4b5563", marginBottom: 3 },
 
   divider: { borderTopWidth: 1, borderTopColor: "#d1d5db", borderTopStyle: "solid", marginVertical: 5 },
 
-  clientSection: { backgroundColor: "#f9fafb", padding: 12, borderRadius: 6, marginBottom: 20 },
+  clientSection: { backgroundColor: "#f9fafb", padding: 12, borderRadius: 6, marginBottom: 5, marginTop: -30 },
   clientTitle: { fontSize: 9, color: "#9ca3af", marginBottom: 6, textTransform: "uppercase", fontWeight: "bold" },
   clientName: { fontSize: 14, fontWeight: "bold", color: "#111827", marginBottom: 8 },
 
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
   colTotal: { width: "20%", textAlign: "right", fontWeight: "bold", color: "#111827" },
 
   tableCell: { fontSize: 9, color: "#374151" },
-  itemImage: { width: 50, height: 50, objectFit: "contain", borderRadius: 4 },
+  itemImage: { width: 50, height: 50, objectFit: "contain", padding: 1 },
   medidasText: { fontSize: 8, color: "#6b7280", marginTop: 3 },
 
   totalSection: { flexDirection: "row", justifyContent: "flex-end", marginBottom: 20 },
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
   anexosLink: { fontSize: 9, color: "#2563eb", textDecoration: "underline", marginBottom: 4 },
   anexosWarning: { fontSize: 8, color: "#60a5fa", marginTop: 6 },
 
-  signaturesContainer: { flexDirection: "row", justifyContent: "space-between", marginTop: 30, marginBottom: 10 },
+  signaturesContainer: { flexDirection: "row", justifyContent: "space-between", marginTop: 20, marginBottom: 5 },
   signatureBlock: { width: "45%", alignItems: "center" },
   signatureLine: { width: "100%", borderTopWidth: 1, borderTopColor: "#9ca3af", borderTopStyle: "solid", marginBottom: 5 },
   signatureText: { fontSize: 10, fontWeight: "bold", color: "#111827", textAlign: "center", textTransform: "uppercase" },
@@ -194,11 +194,19 @@ const styles = StyleSheet.create({
 });
 
 const BlocoAssinaturas = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }) => {
+  const mensagemAgradecimento = (
+    <View style={{ marginTop: 15, alignItems: "center", paddingHorizontal: 20 }}>
+      <Text style={{ fontSize: 9, color: "#374151", fontStyle: "italic", textAlign: "center" }}>
+        A Salvador Comunicação Visual agradece a solicitação. Estamos à disposição para qualquer dúvida.
+      </Text>
+    </View>
+  );
+
   if (isOP) {
     const vendedor = Array.isArray(dados.orcamento.vendedores) ? dados.orcamento.vendedores[0] : dados.orcamento.vendedores;
     return (
-      <View wrap={false} style={{ marginTop: 40, marginBottom: 10 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-around", marginBottom: 40 }}>
+      <View wrap={false} style={{ marginTop: 30, marginBottom: 10 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-around", marginBottom: 30 }}>
           <View style={{ width: "40%", alignItems: "center" }}>
             <View style={styles.signatureLine} />
             <Text style={styles.signatureText}>Gerente</Text>
@@ -220,6 +228,7 @@ const BlocoAssinaturas = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boole
             <Text style={styles.signatureRole}>Já Assinado Digitalmente</Text>
           </View>
         </View>
+        {mensagemAgradecimento}
       </View>
     );
   }
@@ -238,6 +247,7 @@ const BlocoAssinaturas = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boole
           <Text style={styles.signatureRole}>De acordo com os termos</Text>
         </View>
       </View>
+      {mensagemAgradecimento}
     </View>
   );
 };
@@ -268,43 +278,47 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
 
   const imagensAnexas = dados.anexos?.filter(a => a.file_url.match(/\.(jpeg|jpg|png|webp)$/i)) || [];
 
+  const renderHeader = (tituloAlternativo?: string) => (
+    <View style={styles.header} fixed>
+      <View style={styles.logoContainer}>
+        {dados.empresa?.logo_url ? <PDFImage src={dados.empresa.logo_url} style={styles.logo} /> : null}
+
+        <View style={styles.companyTextWrapper}>
+          {dados.empresa?.cnpj ? <Text style={styles.companyText}>CNPJ: {dados.empresa.cnpj}</Text> : null}
+          {dados.empresa?.telefone ? <Text style={styles.companyText}>Tel: {dados.empresa.telefone}</Text> : null}
+          {enderecoEmpresa.linha1 || enderecoEmpresa.linha2 ? (
+            <>
+              <Text style={styles.companyText}>
+                {[enderecoEmpresa.linha1, enderecoEmpresa.linha2].filter(Boolean).join(" - ")}
+              </Text>
+              {dados.empresa?.cep ? <Text style={styles.companyText}>CEP: {dados.empresa.cep}</Text> : null}
+            </>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={styles.invoiceTitleBlock}>
+        <Text style={styles.invoiceTitle}>{tituloAlternativo || (isOP ? "ORDEM DE\nPRODUÇÃO" : "ORÇAMENTO")}</Text>
+        <Text style={styles.invoiceDetails}>Nº: {String(dados.orcamento.numero_orcamento || 0).padStart(5, '0')}</Text>
+        <Text style={styles.invoiceDetails}>Emissão: {formatarData(dados.orcamento.data_emissao)}</Text>
+
+        {vendedor ? (
+          <>
+            <Text style={[styles.invoiceDetails, { marginTop: 4 }]}>Vendedor: {vendedor.nome}</Text>
+            {vendedor.email && <Text style={styles.invoiceDetails}>{vendedor.email}</Text>}
+          </>
+        ) : null}
+        {vendedor?.telefone ? (
+          <Text style={styles.invoiceDetails}>Tel: {vendedor.telefone}</Text>
+        ) : null}
+      </View>
+    </View>
+  );
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        <View style={styles.header}>
-          <View style={styles.logoContainer}>
-            {dados.empresa?.logo_url ? <PDFImage src={dados.empresa.logo_url} style={styles.logo} /> : null}
-
-            <View style={styles.companyTextWrapper}>
-              {dados.empresa?.cnpj ? <Text style={styles.companyText}>CNPJ: {dados.empresa.cnpj}</Text> : null}
-              {dados.empresa?.telefone ? <Text style={styles.companyText}>Tel: {dados.empresa.telefone}</Text> : null}
-              {enderecoEmpresa.linha1 || enderecoEmpresa.linha2 ? (
-                <>
-                  <Text style={styles.companyText}>
-                    {[enderecoEmpresa.linha1, enderecoEmpresa.linha2].filter(Boolean).join(" - ")}
-                  </Text>
-                  {dados.empresa?.cep ? <Text style={styles.companyText}>CEP: {dados.empresa.cep}</Text> : null}
-                </>
-              ) : null}
-            </View>
-          </View>
-
-          <View style={styles.invoiceTitleBlock}>
-            <Text style={styles.invoiceTitle}>{isOP ? "ORDEM DE\nPRODUÇÃO" : "ORÇAMENTO"}</Text>
-            <Text style={styles.invoiceDetails}>Nº: {String(dados.orcamento.numero_orcamento || 0).padStart(5, '0')}</Text>
-            <Text style={styles.invoiceDetails}>Emissão: {formatarData(dados.orcamento.data_emissao)}</Text>
-
-            {vendedor ? (
-              <>
-                <Text style={[styles.invoiceDetails, { marginTop: 4 }]}>Vendedor: {vendedor.nome}</Text>
-                {vendedor.email && <Text style={styles.invoiceDetails}>{vendedor.email}</Text>}
-              </>
-            ) : null}
-            {vendedor?.telefone ? (
-              <Text style={styles.invoiceDetails}>Tel: {vendedor.telefone}</Text>
-            ) : null}
-          </View>
-        </View>
+        {renderHeader()}
 
         <View style={styles.clientSection}>
           <Text style={styles.clientTitle}>Preparado Para:</Text>
@@ -384,7 +398,7 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
         {!isOP && (
           <View style={styles.totalSection} wrap={false}>
             <View style={styles.totalBox}>
-              
+
               {/* Ocultar Subtotal Bruto se não houver desconto */}
               {totalDescontos > 0 && (
                 <>
@@ -438,17 +452,13 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
           </View>
         )}
 
-        {dados.orcamento.observacoes ? (
-          <View style={styles.obsSection}>
-            <Text style={styles.obsTitle}>Observações e Condições:</Text>
-            <Text style={[styles.obsText, { width: "100%" }]}>{dados.orcamento.observacoes}</Text>
-          </View>
-        ) : null}
         <View style={styles.obsSection}>
-          <Text style={styles.obsTitle}>Informações Importantes:</Text>
-          <Text style={styles.obsText}>Os serviços só poderão ser executados mediante autorização do cliente.
-            {"\n"}Licença junto à Prefeitura é de responsabilidade do cliente.
-            {"\n"}O cliente deverá fornecer ponto de energia elétrica junto ao local de instalação do letreiro.
+          <Text style={styles.obsTitle}>Observações e Condições:</Text>
+          <Text style={[styles.obsText, { width: "100%" }]}>
+            {dados.orcamento.observacoes ? dados.orcamento.observacoes + "\n" : ""}
+            {"Os serviços só poderão ser executados mediante autorização do cliente.\n"}
+            {"Licença junto à Prefeitura é de responsabilidade do cliente.\n"}
+            {"O cliente deverá fornecer ponto de energia elétrica junto ao local de instalação do letreiro."}
           </Text>
         </View>
 
@@ -468,12 +478,6 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
 
         <BlocoAssinaturas dados={dados} isOP={isOP} />
 
-        <View style={{ marginTop: 30, alignItems: "center", paddingHorizontal: 20 }}>
-          <Text style={{ fontSize: 11, color: "#111827", fontWeight: "bold", textAlign: "center" }}>
-            A Salvador Comunicação Visual agradece a solicitação. Estamos à disposição para qualquer dúvida.
-          </Text>
-        </View>
-
         <Text render={({ pageNumber, totalPages }) => (
           pageNumber < totalPages ? "CONTINUA NA PRÓXIMA PÁGINA" : ""
         )} fixed style={styles.continueText} />
@@ -486,19 +490,13 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
 
       {imagensAnexas.map((img, idx) => (
         <Page key={`anexo-${idx}`} size="A4" style={styles.page}>
-          <Text style={[styles.invoiceTitle, { fontSize: 16, marginBottom: 15 }]}>ANEXO: {img.file_name}</Text>
+          {renderHeader(`ANEXO: ${img.file_name}`)}
 
           <View style={{ flex: 1, marginVertical: 10, alignItems: "center", justifyContent: "center" }}>
             <PDFImage src={img.file_url} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
           </View>
 
           <BlocoAssinaturas dados={dados} isOP={isOP} />
-
-          <View style={{ marginTop: 30, alignItems: "center", paddingHorizontal: 20 }}>
-            <Text style={{ fontSize: 11, color: "#111827", fontWeight: "bold", textAlign: "center" }}>
-              A Salvador Comunicação Visual agradece a solicitação. Estamos à disposição para qualquer dúvida.
-            </Text>
-          </View>
           <Text render={({ pageNumber, totalPages }) => (`Página ${pageNumber} de ${totalPages}`)} fixed style={styles.pageNumber} />
         </Page>
       ))}

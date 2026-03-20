@@ -89,7 +89,7 @@ function FormularioOrcamento() {
   // 🚀 ESTADOS PARA DROPDOWNS COM BUSCA
   const [buscaCliente, setBuscaCliente] = useState("");
   const [dropdownClienteOpen, setDropdownClienteOpen] = useState(false);
-  
+
   const [buscaVendedor, setBuscaVendedor] = useState("");
   const [dropdownVendedorOpen, setDropdownVendedorOpen] = useState(false);
 
@@ -387,8 +387,8 @@ function FormularioOrcamento() {
         <div className="md:col-span-5 relative">
           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Cliente *</label>
           <div className="relative">
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Digite para buscar..."
               value={dropdownClienteOpen ? buscaCliente : nomeClienteSelecionado || ""}
               onFocus={() => { setDropdownClienteOpen(true); setBuscaCliente(""); }}
@@ -419,8 +419,8 @@ function FormularioOrcamento() {
         <div className="md:col-span-4 relative">
           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Vendedor Responsável</label>
           <div className="relative">
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Digite para buscar..."
               value={dropdownVendedorOpen ? buscaVendedor : nomeVendedorSelecionado || ""}
               onFocus={() => { setDropdownVendedorOpen(true); setBuscaVendedor(""); }}
@@ -458,8 +458,8 @@ function FormularioOrcamento() {
           <div className="md:col-span-6 lg:col-span-8 relative">
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">Produto *</label>
             <div className="relative">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 placeholder="Digite para buscar produto..."
                 value={dropdownProdutoOpen ? buscaProduto : nomeProdutoSelecionado || ""}
                 onFocus={() => { setDropdownProdutoOpen(true); setBuscaProduto(""); }}
@@ -622,7 +622,7 @@ function FormularioOrcamento() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Observações do Orçamento</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Observações e Condições</label>
                 <textarea value={observacoes} onChange={e => setObservacoes(e.target.value)} rows={3} className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
               </div>
 
