@@ -337,14 +337,8 @@ const OrcamentoPDF = ({ dados, isOP }: { dados: DadosImpressao, isOP?: boolean }
           <View style={[styles.clientGridRow, { flexDirection: "column" }]}>
             <Text style={{ fontSize: 10, color: "#4b5563", width: "100%", marginBottom: 2 }}>
               <Text style={styles.clientLabel}>Endereço: </Text>
-              {enderecoCliente.linha1} {enderecoCliente.linha2 ? ` - ${enderecoCliente.linha2}` : ""}
+              {enderecoCliente.linha1} {enderecoCliente.linha2 ? ` - ${enderecoCliente.linha2}` : ""} - {dados.cliente.cep}
             </Text>
-            {dados.cliente?.cep ? (
-              <Text style={{ fontSize: 10, color: "#4b5563", width: "100%" }}>
-                <Text style={styles.clientLabel}>CEP: </Text>
-                {dados.cliente.cep}
-              </Text>
-            ) : null}
           </View>
 
           {isOP && (dados.orcamento.endereco_obra || dados.orcamento.contato_obra) && (

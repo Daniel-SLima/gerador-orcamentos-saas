@@ -11,6 +11,8 @@ interface Orcamento {
   data_emissao: string;
   valor_total: number;
   status: string;
+  endereco_obra?: string;
+  contato_obra?: string;
   clientes: {
     nome_razao_social: string;
   };
@@ -39,6 +41,7 @@ export default function HistoricoOrcamentosPage() {
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
+  const [menuDirection, setMenuDirection] = useState<'up' | 'down'>('down');
   const router = useRouter();
   const { isAdmin, loadingPerfil } = usePerfilUsuario();
 
@@ -54,6 +57,7 @@ export default function HistoricoOrcamentosPage() {
 
   // 🚀 ESTADOS DO MODAL DE GERAR OP
   const [modalOpAberto, setModalOpAberto] = useState(false);
+  const [modoEdicaoOp, setModoEdicaoOp] = useState(false); // true = apenas salvar, false = salvar e gerar PDF
   const [orcamentoOpSelecionado, setOrcamentoOpSelecionado] = useState<string | null>(null);
   const [opEnderecoRua, setOpEnderecoRua] = useState("");
   const [opEnderecoNumero, setOpEnderecoNumero] = useState("");
@@ -82,6 +86,8 @@ export default function HistoricoOrcamentosPage() {
           data_emissao,
           valor_total,
           status,
+          endereco_obra,
+          contato_obra,
           clientes ( nome_razao_social ),
           vendedores ( nome )
         `)
@@ -158,14 +164,30 @@ export default function HistoricoOrcamentosPage() {
 
   const abrirModalGerarOP = (orc: Orcamento) => {
     setMenuAbertoId(null);
+    setModoEdicaoOp(false);
     setOrcamentoOpSelecionado(orc.id);
-    setOpEnderecoRua("");
-    setOpEnderecoNumero("");
-    setOpEnderecoBairro("");
-    setOpEnderecoCidade("");
-    setOpContatoNome("");
-    setOpContatoTelefone("");
+    // Pré-preencher com dados já existentes no orçamento
+    const endExistente = orc.endereco_obra || "";
+    const contExistente = orc.contato_obra || "";
+    // Tenta extrair os campos do endereço salvo (Rua, Nº - Bairro - Cidade)
+    const partesEnd = endExistente.split(" - ");
+    if (partesEnd.length >= 1) {
+      const ruaNum = partesEnd[0].split(",");
+      setOpEnderecoRua(ruaNum[0]?.trim() || "");
+      setOpEnderecoNumero(ruaNum[1]?.trim() || "");
+    }
+    setOpEnderecoBairro(partesEnd[1]?.trim() || "");
+    setOpEnderecoCidade(partesEnd[2]?.trim() || "");
+    // Tenta extrair contato salvo (Nome - Telefone)
+    const partesCont = contExistente.split(" - ");
+    setOpContatoNome(partesCont[0]?.trim() || "");
+    setOpContatoTelefone(partesCont[1]?.trim() || "");
     setModalOpAberto(true);
+  };
+
+  const abrirModalEditarDadosOP = (orc: Orcamento) => {
+    abrirModalGerarOP(orc);
+    setModoEdicaoOp(true); // Apenas salvar, não gerar PDF
   };
 
   const confirmarGerarOP = async () => {
@@ -204,9 +226,18 @@ export default function HistoricoOrcamentosPage() {
 
       const { error } = await queryUpdate;
       if (error) throw error;
-      
+
+      // Atualiza os dados da OP na lista local
+      setOrcamentos(orcamentos.map(o =>
+        o.id === orcamentoOpSelecionado
+          ? { ...o, endereco_obra: enderecoCombinado, contato_obra: contatoCombinado }
+          : o
+      ));
+
       setModalOpAberto(false);
-      window.open(`/imprimir/${orcamentoOpSelecionado}?action=op`, "_blank");
+      if (!modoEdicaoOp) {
+        window.open(`/imprimir/${orcamentoOpSelecionado}?action=op`, "_blank");
+      }
     } catch (error) {
       alert("Erro ao salvar detalhes da OP: " + (error as Error).message);
     } finally {
@@ -236,9 +267,17 @@ export default function HistoricoOrcamentosPage() {
     return new Intl.DateTimeFormat('pt-BR').format(data);
   };
 
-  const toggleMenu = (id: string) => {
-    if (menuAbertoId === id) setMenuAbertoId(null);
-    else setMenuAbertoId(id);
+  const toggleMenu = (id: string, e?: React.MouseEvent) => {
+    if (menuAbertoId === id) {
+      setMenuAbertoId(null);
+    } else {
+      if (e) {
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        setMenuDirection(spaceBelow < 220 ? 'up' : 'down');
+      }
+      setMenuAbertoId(id);
+    }
   };
 
   const limparFiltros = () => {
@@ -345,16 +384,21 @@ export default function HistoricoOrcamentosPage() {
                       )}
                     </div>
 
-                    <button onClick={(e) => { e.stopPropagation(); toggleMenu(orc.id); }} className="p-1 -mr-2 text-gray-400 hover:text-blue-600 rounded-lg transition-colors focus:outline-none">
+                    <button onClick={(e) => { e.stopPropagation(); toggleMenu(orc.id, e); }} className="p-1 -mr-2 text-gray-400 hover:text-blue-600 rounded-lg transition-colors focus:outline-none">
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
                     </button>
 
                     {menuAbertoId === orc.id && (
-                      <div className="absolute right-4 top-10 w-44 bg-white border border-gray-100 rounded-xl shadow-xl z-50 flex flex-col py-2 animate-fade-in">
+                      <div className={`absolute right-4 w-44 bg-white border border-gray-100 rounded-xl shadow-xl z-50 flex flex-col py-2 animate-fade-in ${menuDirection === 'up' ? 'bottom-8' : 'top-10'}`}>
                         {orc.status === 'Aprovado' && (
-                          <button onClick={(e) => { e.stopPropagation(); abrirModalGerarOP(orc); }} className="px-4 py-2.5 text-sm text-left font-bold text-green-700 hover:bg-green-50 flex items-center gap-2">
-                            📄 Gerar O.P.
-                          </button>
+                          <>
+                            <button onClick={(e) => { e.stopPropagation(); abrirModalGerarOP(orc); }} className="px-4 py-2.5 text-sm text-left font-bold text-green-700 hover:bg-green-50 flex items-center gap-2">
+                              📄 Gerar O.P.
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); abrirModalEditarDadosOP(orc); }} className="px-4 py-2.5 text-sm text-left font-medium text-amber-700 hover:bg-amber-50 flex items-center gap-2">
+                              ✏️ Editar Dados da O.P.
+                            </button>
+                          </>
                         )}
                         <button onClick={(e) => { e.stopPropagation(); visualizarPDF(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg> Ver PDF
@@ -450,16 +494,21 @@ export default function HistoricoOrcamentosPage() {
                       <td className="p-4 text-green-600 font-bold">{formatarMoeda(orc.valor_total)}</td>
 
                       <td className="p-4 text-center relative">
-                        <button onClick={(e) => { e.stopPropagation(); toggleMenu(orc.id); }} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors flex items-center justify-center mx-auto gap-2">
+                        <button onClick={(e) => { e.stopPropagation(); toggleMenu(orc.id, e); }} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors flex items-center justify-center mx-auto gap-2">
                           Ações <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                         </button>
 
                         {menuAbertoId === orc.id && (
-                          <div className="absolute right-12 top-14 w-44 bg-white border border-gray-100 rounded-xl shadow-xl z-50 flex flex-col py-2 animate-fade-in">
+                          <div className={`absolute right-2 w-48 bg-white border border-gray-100 rounded-xl shadow-xl z-50 flex flex-col py-2 animate-fade-in ${menuDirection === 'up' ? 'bottom-12' : 'top-12'}`}>
                             {orc.status === 'Aprovado' && (
-                              <button onClick={(e) => { e.stopPropagation(); abrirModalGerarOP(orc); }} className="px-4 py-2.5 text-sm text-left font-bold text-green-700 hover:bg-green-50 flex items-center gap-2">
-                                📄 Gerar O.P.
-                              </button>
+                              <>
+                                <button onClick={(e) => { e.stopPropagation(); abrirModalGerarOP(orc); }} className="px-4 py-2.5 text-sm text-left font-bold text-green-700 hover:bg-green-50 flex items-center gap-2">
+                                  📄 Gerar O.P.
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); abrirModalEditarDadosOP(orc); }} className="px-4 py-2.5 text-sm text-left font-medium text-amber-700 hover:bg-amber-50 flex items-center gap-2">
+                                  ✏️ Editar Dados da O.P.
+                                </button>
+                              </>
                             )}
                             <button onClick={(e) => { e.stopPropagation(); visualizarPDF(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg> Ver PDF
@@ -534,7 +583,10 @@ export default function HistoricoOrcamentosPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <h3 className="font-bold text-lg text-gray-900">Detalhes da Ordem de Produção</h3>
+              <div>
+                <h3 className="font-bold text-lg text-gray-900">{modoEdicaoOp ? "Editar Dados da O.P." : "Detalhes da Ordem de Produção"}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{modoEdicaoOp ? "Salve para atualizar sem gerar um novo PDF." : "Preencha os campos opcionais que aparecerão no PDF."}</p>
+              </div>
               <button disabled={salvandoOp} onClick={() => setModalOpAberto(false)} className="text-gray-400 hover:text-red-500">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
@@ -583,8 +635,8 @@ export default function HistoricoOrcamentosPage() {
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
               <button disabled={salvandoOp} onClick={() => setModalOpAberto(false)} className="px-5 py-2.5 text-gray-600 font-semibold hover:bg-gray-200 rounded-lg transition-colors">Cancelar</button>
-              <button disabled={salvandoOp} onClick={confirmarGerarOP} className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-colors shadow-md flex items-center gap-2">
-                {salvandoOp ? "Gerando..." : "Confirmar e Gerar O.P."}
+              <button disabled={salvandoOp} onClick={confirmarGerarOP} className={`px-5 py-2.5 text-white font-bold rounded-lg transition-colors shadow-md flex items-center gap-2 ${modoEdicaoOp ? 'bg-amber-500 hover:bg-amber-600' : 'bg-green-600 hover:bg-green-700'}`}>
+                {salvandoOp ? "Salvando..." : (modoEdicaoOp ? "Salvar Dados" : "Confirmar e Gerar O.P.")}
               </button>
             </div>
           </div>

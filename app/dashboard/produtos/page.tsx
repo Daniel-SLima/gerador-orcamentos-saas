@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../lib/supabase";
+import { comprimirImagem } from "../../lib/comprimirImagem";
 
 const NOME_DO_BUCKET = "arquivos";
 
@@ -108,14 +109,14 @@ export default function ProdutosPage() {
       const caminhoAntigoParaDeletar = extrairCaminhoStorage(imagemUrl);
 
       if (arquivoSelecionado) {
-        setMessage("⬆️ Fazendo upload da imagem...");
+        setMessage("⬆️ Comprimindo e fazendo upload da imagem...");
 
-        const extensao = arquivoSelecionado.name.split('.').pop();
-        const nomeArquivoUnico = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.${extensao}`;
+        const arquivoComprimido = await comprimirImagem(arquivoSelecionado);
+        const nomeArquivoUnico = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.webp`;
 
         const { error: uploadError } = await supabase.storage
           .from(NOME_DO_BUCKET)
-          .upload(nomeArquivoUnico, arquivoSelecionado, { upsert: true });
+          .upload(nomeArquivoUnico, arquivoComprimido, { upsert: true, contentType: "image/webp" });
 
         if (uploadError) throw uploadError;
 

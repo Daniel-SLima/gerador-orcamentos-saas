@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense, useRef } from "react";
 import { supabase } from "../../lib/supabase";
+import { comprimirImagem } from "../../lib/comprimirImagem";
 import { useSearchParams } from "next/navigation";
 import { usePerfilUsuario } from "../../hooks/usePerfilUsuario";
 
@@ -322,10 +323,13 @@ function FormularioOrcamento() {
       if (arquivosAnexos.length > 0) {
         const anexosParaSalvar = [];
         for (const file of arquivosAnexos) {
-          const ext = file.name.split('.').pop();
+          // Comprime imagens antes do upload; outros tipos ficam intactos
+          const fileParaUpload = await comprimirImagem(file);
+          const isWebp = fileParaUpload.type === "image/webp";
+          const ext = isWebp ? "webp" : (file.name.split('.').pop() || "bin");
           const filePath = `${user.id}/${idFinal}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
 
-          const { error: uploadError } = await supabase.storage.from("anexos").upload(filePath, file);
+          const { error: uploadError } = await supabase.storage.from("anexos").upload(filePath, fileParaUpload);
 
           if (!uploadError) {
             const { data: { publicUrl } } = supabase.storage.from("anexos").getPublicUrl(filePath);

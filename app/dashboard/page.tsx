@@ -8,8 +8,9 @@ import { usePerfilUsuario } from "../hooks/usePerfilUsuario";
 interface ResumoDashboard {
   totalOrcamentos: number;
   valorTotal: number;
-  totalClientes: number;
-  totalProdutos: number;
+  totalRascunhos: number;
+  totalAprovados: number;
+  totalReprovados: number;
 }
 
 interface UltimoOrcamento {
@@ -29,7 +30,7 @@ interface UltimoOrcamento {
 }
 
 export default function DashboardPage() {
-  const [resumo, setResumo] = useState<ResumoDashboard>({ totalOrcamentos: 0, valorTotal: 0, totalClientes: 0, totalProdutos: 0 });
+  const [resumo, setResumo] = useState<ResumoDashboard>({ totalOrcamentos: 0, valorTotal: 0, totalRascunhos: 0, totalAprovados: 0, totalReprovados: 0 });
   const [ultimosOrcamentos, setUltimosOrcamentos] = useState<UltimoOrcamento[]>([]);
   const [todosOrcamentosBrutos, setTodosOrcamentosBrutos] = useState<UltimoOrcamento[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,12 +71,22 @@ export default function DashboardPage() {
       return true;
     });
 
-    const valor = orcamentosFiltrados.reduce((acc, curr) => acc + Number(curr.valor_total), 0);
+    // 💰 VALOR TOTAL: apenas Aprovado + Aberto
+    const orcAtivos = orcamentosFiltrados.filter(orc => orc.status === "Aprovado" || orc.status === "Aberto");
+    const valor = orcAtivos.reduce((acc, curr) => acc + Number(curr.valor_total), 0);
+
+    // 📊 CONTADORES POR STATUS
+    const totalRascunhos = orcamentosFiltrados.filter(o => o.status === "Rascunho").length;
+    const totalAprovados = orcamentosFiltrados.filter(o => o.status === "Aprovado").length;
+    const totalReprovados = orcamentosFiltrados.filter(o => o.status === "Recusado").length;
 
     setResumo(prev => ({
       ...prev,
       valorTotal: valor,
-      totalOrcamentos: orcamentosFiltrados.length
+      totalOrcamentos: orcAtivos.length,
+      totalRascunhos,
+      totalAprovados,
+      totalReprovados
     }));
 
     // 🏆 CÁLCULO DOS RANKINGS APENAS PARA APROVADOS
@@ -127,9 +138,7 @@ export default function DashboardPage() {
       }
 
       // Puxa TUDO de uma vez só (Super rápido)
-      const [contagemClientes, contagemProdutos, todosOrc] = await Promise.all([
-        supabase.from("clientes").select("id", { count: "exact", head: true }),
-        supabase.from("produtos").select("id", { count: "exact", head: true }),
+      const [todosOrc] = await Promise.all([
         orcamentosQuery
       ]);
 
@@ -137,11 +146,8 @@ export default function DashboardPage() {
         setTodosOrcamentosBrutos(todosOrc.data as unknown as UltimoOrcamento[]);
       }
 
-      setResumo(prev => ({
-        ...prev,
-        totalClientes: contagemClientes.count || 0,
-        totalProdutos: contagemProdutos.count || 0
-      }));
+
+
 
     } catch (error) {
       console.error("Erro ao carregar painel:", error);
@@ -264,50 +270,50 @@ export default function DashboardPage() {
             <div className="bg-blue-500/30 p-3 rounded-lg">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             </div>
-            <span className="text-blue-100 text-xs font-bold uppercase tracking-wider bg-blue-900/30 px-2 py-1 rounded-md">Total</span>
+            <span className="text-blue-100 text-xs font-bold uppercase tracking-wider bg-blue-900/30 px-2 py-1 rounded-md">Aberto + Aprovado</span>
           </div>
           <div>
-            <p className="text-blue-100 text-sm font-medium mb-1">Valor em Orçamentos</p>
+            <p className="text-blue-100 text-sm font-medium mb-1">Valor Ativo</p>
             <h3 className="text-2xl md:text-3xl font-black">{formatarMoeda(resumo.valorTotal)}</h3>
           </div>
         </div>
 
-        {/* Card 2: Qtd Orçamentos */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between">
+        {/* Card 2: Rascunhos */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-yellow-100 flex flex-col justify-between">
           <div className="flex justify-between items-start mb-4">
-            <div className="bg-gray-50 border border-gray-100 p-3 rounded-lg">
-              <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            <div className="bg-yellow-50 border border-yellow-100 p-3 rounded-lg">
+              <svg className="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
             </div>
           </div>
           <div>
-            <p className="text-gray-500 text-sm font-medium mb-1">Orçamentos Gerados</p>
-            <h3 className="text-2xl font-black text-gray-900">{resumo.totalOrcamentos}</h3>
+            <p className="text-gray-500 text-sm font-medium mb-1">Rascunhos em Aberto</p>
+            <h3 className="text-2xl font-black text-yellow-600">{resumo.totalRascunhos}</h3>
           </div>
         </div>
 
-        {/* Card 3: Clientes */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between">
+        {/* Card 3: Aprovados */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-green-100 flex flex-col justify-between">
           <div className="flex justify-between items-start mb-4">
-            <div className="bg-gray-50 border border-gray-100 p-3 rounded-lg">
-              <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+            <div className="bg-green-50 border border-green-100 p-3 rounded-lg">
+              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             </div>
           </div>
           <div>
-            <p className="text-gray-500 text-sm font-medium mb-1">Clientes na Base</p>
-            <h3 className="text-2xl font-black text-gray-900">{resumo.totalClientes}</h3>
+            <p className="text-gray-500 text-sm font-medium mb-1">Aprovados no Período</p>
+            <h3 className="text-2xl font-black text-green-600">{resumo.totalAprovados}</h3>
           </div>
         </div>
 
-        {/* Card 4: Produtos */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between">
+        {/* Card 4: Reprovados */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-red-100 flex flex-col justify-between">
           <div className="flex justify-between items-start mb-4">
-            <div className="bg-gray-50 border border-gray-100 p-3 rounded-lg">
-              <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+            <div className="bg-red-50 border border-red-100 p-3 rounded-lg">
+              <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             </div>
           </div>
           <div>
-            <p className="text-gray-500 text-sm font-medium mb-1">Produtos Cadastrados</p>
-            <h3 className="text-2xl font-black text-gray-900">{resumo.totalProdutos}</h3>
+            <p className="text-gray-500 text-sm font-medium mb-1">Reprovados no Período</p>
+            <h3 className="text-2xl font-black text-red-400">{resumo.totalReprovados}</h3>
           </div>
         </div>
       </div>
