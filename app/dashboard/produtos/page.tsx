@@ -112,11 +112,11 @@ export default function ProdutosPage() {
         setMessage("⬆️ Comprimindo e fazendo upload da imagem...");
 
         const arquivoComprimido = await comprimirImagem(arquivoSelecionado);
-        const nomeArquivoUnico = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.webp`;
+        const nomeArquivoUnico = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
 
         const { error: uploadError } = await supabase.storage
           .from(NOME_DO_BUCKET)
-          .upload(nomeArquivoUnico, arquivoComprimido, { upsert: true, contentType: "image/webp" });
+          .upload(nomeArquivoUnico, arquivoComprimido, { upsert: true, contentType: "image/jpeg" });
 
         if (uploadError) throw uploadError;
 

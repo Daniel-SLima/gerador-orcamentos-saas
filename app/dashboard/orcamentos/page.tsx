@@ -325,8 +325,8 @@ function FormularioOrcamento() {
         for (const file of arquivosAnexos) {
           // Comprime imagens antes do upload; outros tipos ficam intactos
           const fileParaUpload = await comprimirImagem(file);
-          const isWebp = fileParaUpload.type === "image/webp";
-          const ext = isWebp ? "webp" : (file.name.split('.').pop() || "bin");
+          const isJpeg = fileParaUpload.type === "image/jpeg";
+          const ext = isJpeg ? "jpg" : (file.name.split('.').pop() || "bin");
           const filePath = `${user.id}/${idFinal}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
 
           const { error: uploadError } = await supabase.storage.from("anexos").upload(filePath, fileParaUpload);

@@ -1,10 +1,9 @@
 /**
- * Comprime e converte uma imagem para WebP usando o Canvas do browser.
+ * Comprime e converte uma imagem para JPEG usando o Canvas do browser.
  * - Redimensiona proporcionalmente para no máximo `maxDim` pixels (largura ou altura)
- * - Converte para WebP com qualidade `quality` (0 a 1)
- * - Retorna um File com nome terminando em .webp
- *
- * Funciona somente no browser (usa Canvas API).
+ * - Converte para JPEG com qualidade `quality` (0 a 1)
+ * - Retorna um File com nome terminando em .jpg
+ * - Preenche o fundo com branco para evitar que PNGs transparentes fiquem pretos
  */
 export async function comprimirImagem(
   arquivo: File,
@@ -40,22 +39,25 @@ export async function comprimirImagem(
       const ctx = canvas.getContext("2d");
       if (!ctx) return reject(new Error("Canvas context não disponível"));
 
+      // 🚀 Preenche o fundo com branco para evitar que PNGs transparentes fiquem pretos
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
 
       canvas.toBlob(
         (blob) => {
           if (!blob) return reject(new Error("Falha ao converter imagem"));
 
-          // Troca extensão original por .webp no nome do arquivo
+          // 🚀 Troca a extensão para .jpg
           const nomeBase = arquivo.name.replace(/\.[^/.]+$/, "");
-          const novoArquivo = new File([blob], `${nomeBase}.webp`, {
-            type: "image/webp",
+          const novoArquivo = new File([blob], `${nomeBase}.jpg`, {
+            type: "image/jpeg",
             lastModified: Date.now(),
           });
 
           resolve(novoArquivo);
         },
-        "image/webp",
+        "image/jpeg", // 🚀 Formato alterado para JPEG
         quality
       );
     };
