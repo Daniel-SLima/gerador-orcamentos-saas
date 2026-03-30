@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { usePerfilUsuario } from "../hooks/usePerfilUsuario";
+import { deletarDoCloudinary } from "../lib/uploadCloudinary";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -20,28 +21,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // =========================================================================
   const limparAnexosVencidos = async () => {
     try {
-      // 🎯 AQUI VOCÊ DEFINE QUANTOS DIAS O ARQUIVO SOBREVIVE:
-      const DIAS_EXPIRACAO = 15; 
+      const DIAS_EXPIRACAO = 15;
 
       const dataLimite = new Date();
       dataLimite.setDate(dataLimite.getDate() - DIAS_EXPIRACAO);
       const dataFormatada = dataLimite.toISOString();
 
-      // 1. Busca os anexos criados antes da data limite
+      // 1. Busca os anexos vencidos com todos os dados necessários
       const { data: anexosVelhos } = await supabase
         .from("orcamento_anexos")
-        .select("id, file_path")
+        .select("id, file_path, file_url")
         .lt("created_at", dataFormatada);
 
       if (anexosVelhos && anexosVelhos.length > 0) {
-        // 2. Apaga o arquivo físico do Storage
-        const paths = anexosVelhos.map(a => a.file_path);
-        await supabase.storage.from("anexos").remove(paths);
+        // 2a. Deleta do Supabase Storage os arquivos antigos (legado)
+        const pathsSupabase = anexosVelhos
+          .map(a => a.file_path)
+          .filter(p => p && p !== "cloudinary" && !p.startsWith("http"));
+        if (pathsSupabase.length > 0) {
+          await supabase.storage.from("anexos").remove(pathsSupabase);
+        }
 
-        // 3. Apaga o registro da tabela
+        // 2b. Deleta do Cloudinary os arquivos novos (via rota segura do servidor)
+        const urlsCloudinary = anexosVelhos
+          .filter(a => a.file_path === "cloudinary" && a.file_url)
+          .map(a => a.file_url);
+        if (urlsCloudinary.length > 0) {
+          await Promise.allSettled(urlsCloudinary.map(url => deletarDoCloudinary(url)));
+        }
+
+        // 3. Apaga o registro de TODOS do banco (Supabase e Cloudinary)
         const ids = anexosVelhos.map(a => a.id);
         await supabase.from("orcamento_anexos").delete().in("id", ids);
-        console.log(`🧹 Faxina concluída: ${anexosVelhos.length} anexos apagados.`);
+        console.log(`🧹 Faxina: ${anexosVelhos.length} anexos apagados (${urlsCloudinary.length} Cloudinary, ${pathsSupabase.length} Supabase).`);
       }
     } catch (error) {
       console.error("Erro na faxina de anexos:", error);

@@ -2,8 +2,18 @@
 
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../lib/supabase";
+import { uploadParaCloudinary, deletarDoCloudinary } from "../../lib/uploadCloudinary";
 
-const NOME_DO_BUCKET = "arquivos"; 
+// Bucket legado — usado apenas para deletar logo antiga do Supabase ao substituir
+const BUCKET_LEGADO = "arquivos";
+
+const eLogoDoSupabase = (url: string) => !!url && url.includes("supabase.co");
+
+const extrairCaminhoStorage = (url: string) => {
+  if (!url) return null;
+  const partes = url.split(`/${BUCKET_LEGADO}/`);
+  return partes.length > 1 ? partes[1] : null;
+};
 
 interface Vendedor {
   id: string;
@@ -151,32 +161,33 @@ export default function PerfilEmpresa() {
       if (!user) throw new Error("Sessão expirada.");
 
       let urlFinalDaLogo = formData.logo_url;
-      let caminhoAntigoParaDeletar = null;
-      
-      if (formData.logo_url) {
-        const partesUrl = formData.logo_url.split(`/${NOME_DO_BUCKET}/`);
-        if (partesUrl.length > 1) caminhoAntigoParaDeletar = partesUrl[1];
-      }
 
       if (arquivoSelecionado) {
-        setMessage("⬆️ Fazendo upload da nova logo...");
-        const extensao = arquivoSelecionado.name.split('.').pop();
-        const nomeArquivoUnico = `${user.id}/logo_${Date.now()}.${extensao}`;
+        setMessage("⬆️ Fazendo upload da nova logo para o Cloudinary...");
+        // 🚀 Nova logo sempre vai para o Cloudinary
+        urlFinalDaLogo = await uploadParaCloudinary(arquivoSelecionado);
 
-        const { error: uploadError } = await supabase.storage.from(NOME_DO_BUCKET).upload(nomeArquivoUnico, arquivoSelecionado, { upsert: true });
-        if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage.from(NOME_DO_BUCKET).getPublicUrl(nomeArquivoUnico);
-        urlFinalDaLogo = publicUrl;
-
-        if (caminhoAntigoParaDeletar) {
-          await supabase.storage.from(NOME_DO_BUCKET).remove([caminhoAntigoParaDeletar]);
+        // Se a logo ANTERIOR era do Supabase Storage (legado), apaga ela de lá
+        if (eLogoDoSupabase(formData.logo_url)) {
+          const caminhoAntigo = extrairCaminhoStorage(formData.logo_url);
+          if (caminhoAntigo) {
+            await supabase.storage.from(BUCKET_LEGADO).remove([caminhoAntigo]);
+          }
+        } else {
+          // Se era do Cloudinary, deleta via rota segura do servidor
+          await deletarDoCloudinary(formData.logo_url);
         }
-      } 
-      else if (removerLogoAntiga) {
-        urlFinalDaLogo = ""; 
-        if (caminhoAntigoParaDeletar) {
-          await supabase.storage.from(NOME_DO_BUCKET).remove([caminhoAntigoParaDeletar]);
+      } else if (removerLogoAntiga) {
+        urlFinalDaLogo = "";
+        // Se a logo era do Supabase Storage (legado), apaga ela de lá
+        if (eLogoDoSupabase(formData.logo_url)) {
+          const caminhoAntigo = extrairCaminhoStorage(formData.logo_url);
+          if (caminhoAntigo) {
+            await supabase.storage.from(BUCKET_LEGADO).remove([caminhoAntigo]);
+          }
+        } else {
+          // Se era do Cloudinary, deleta via rota segura do servidor
+          await deletarDoCloudinary(formData.logo_url);
         }
       }
 

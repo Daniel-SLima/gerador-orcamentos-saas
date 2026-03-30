@@ -3,8 +3,20 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../lib/supabase";
 import { comprimirImagem } from "../../lib/comprimirImagem";
+import { uploadParaCloudinary, deletarDoCloudinary } from "../../lib/uploadCloudinary";
 
-const NOME_DO_BUCKET = "arquivos";
+// Bucket legado — ainda usado para deletar imagens antigas do Supabase
+const BUCKET_LEGADO = "arquivos";
+
+// Detecta se uma URL de imagem é do Supabase Storage (imagem antiga/legada)
+const eImagemDoSupabase = (url: string) => !!url && url.includes("supabase.co");
+
+// Extrai o caminho relativo dentro do bucket para poder deletar do Supabase
+const extrairCaminhoStorage = (url: string) => {
+  if (!url) return null;
+  const partes = url.split(`/${BUCKET_LEGADO}/`);
+  return partes.length > 1 ? partes[1] : null;
+};
 
 interface Produto {
   id: string;
@@ -90,12 +102,6 @@ export default function ProdutosPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const extrairCaminhoStorage = (url: string) => {
-    if (!url) return null;
-    const partes = url.split(`/${NOME_DO_BUCKET}/`);
-    return partes.length > 1 ? partes[1] : null;
-  };
-
   const salvarProduto = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -106,34 +112,34 @@ export default function ProdutosPage() {
       if (!user) throw new Error("Sessão expirada. Faça login novamente.");
 
       let urlFinalDaImagem = imagemUrl;
-      const caminhoAntigoParaDeletar = extrairCaminhoStorage(imagemUrl);
 
       if (arquivoSelecionado) {
         setMessage("⬆️ Comprimindo e fazendo upload da imagem...");
-
         const arquivoComprimido = await comprimirImagem(arquivoSelecionado);
-        const nomeArquivoUnico = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+        // 🚀 Sempre envia a nova imagem para o Cloudinary
+        urlFinalDaImagem = await uploadParaCloudinary(arquivoComprimido);
 
-        const { error: uploadError } = await supabase.storage
-          .from(NOME_DO_BUCKET)
-          .upload(nomeArquivoUnico, arquivoComprimido, { upsert: true, contentType: "image/jpeg" });
-
-        if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage
-          .from(NOME_DO_BUCKET)
-          .getPublicUrl(nomeArquivoUnico);
-
-        urlFinalDaImagem = publicUrl;
-
-        if (caminhoAntigoParaDeletar) {
-          await supabase.storage.from(NOME_DO_BUCKET).remove([caminhoAntigoParaDeletar]);
+        // Se a imagem ANTERIOR era do Supabase (legado), apaga ela de lá
+        if (eImagemDoSupabase(imagemUrl)) {
+          const caminhoAntigo = extrairCaminhoStorage(imagemUrl);
+          if (caminhoAntigo) {
+            await supabase.storage.from(BUCKET_LEGADO).remove([caminhoAntigo]);
+          }
+        } else {
+          // Se era do Cloudinary, deleta via rota segura do servidor
+          await deletarDoCloudinary(imagemUrl);
         }
-      }
-      else if (removerFotoAntiga) {
+      } else if (removerFotoAntiga) {
         urlFinalDaImagem = "";
-        if (caminhoAntigoParaDeletar) {
-          await supabase.storage.from(NOME_DO_BUCKET).remove([caminhoAntigoParaDeletar]);
+        // Se a imagem era do Supabase (legado), apaga ela de lá
+        if (eImagemDoSupabase(imagemUrl)) {
+          const caminhoAntigo = extrairCaminhoStorage(imagemUrl);
+          if (caminhoAntigo) {
+            await supabase.storage.from(BUCKET_LEGADO).remove([caminhoAntigo]);
+          }
+        } else {
+          // Se era do Cloudinary, deleta via rota segura do servidor
+          await deletarDoCloudinary(imagemUrl);
         }
       }
 
@@ -194,9 +200,6 @@ export default function ProdutosPage() {
     if (!window.confirm("Tem certeza que deseja excluir este item e sua imagem associada?")) return;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Sessão expirada.");
-
       const { error } = await supabase
         .from("produtos")
         .delete()
@@ -204,9 +207,15 @@ export default function ProdutosPage() {
 
       if (error) throw error;
 
-      const caminhoParaDeletar = extrairCaminhoStorage(produtoParaDeletar.imagem_url);
-      if (caminhoParaDeletar) {
-        await supabase.storage.from(NOME_DO_BUCKET).remove([caminhoParaDeletar]);
+      // Se a imagem era do Supabase Storage (legado), apaga ela de lá também
+      if (eImagemDoSupabase(produtoParaDeletar.imagem_url)) {
+        const caminhoParaDeletar = extrairCaminhoStorage(produtoParaDeletar.imagem_url);
+        if (caminhoParaDeletar) {
+          await supabase.storage.from(BUCKET_LEGADO).remove([caminhoParaDeletar]);
+        }
+      } else {
+        // Se era do Cloudinary, deleta via rota segura do servidor
+        await deletarDoCloudinary(produtoParaDeletar.imagem_url);
       }
 
       setProdutos(produtos.filter(produto => produto.id !== produtoParaDeletar.id));

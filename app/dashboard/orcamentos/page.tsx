@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense, useRef } from "react";
 import { supabase } from "../../lib/supabase";
 import { comprimirImagem } from "../../lib/comprimirImagem";
+import { uploadParaCloudinary, deletarDoCloudinary } from "../../lib/uploadCloudinary";
 import { useSearchParams } from "next/navigation";
 import { usePerfilUsuario } from "../../hooks/usePerfilUsuario";
 
@@ -239,18 +240,25 @@ function FormularioOrcamento() {
     setArquivosAnexos(arquivosAnexos.filter((_, index) => index !== indexRemover));
   };
 
-  // 🚀 FUNÇÃO QUE EXCLUI ANEXOS ANTIGOS DO BANCO DIRETAMENTE
-  const removerAnexoSalvo = async (idParaRemover: string, filePath: string) => {
+  // 🚀 SISTEMA HÍBRIDO: Apaga com lógica certa por origem (Supabase legado vs. Cloudinary)
+  const removerAnexoSalvo = async (idParaRemover: string) => {
     if (!window.confirm("Tem certeza que deseja apagar este anexo permanentemente?")) return;
+    const anexo = anexosSalvos.find(a => a.id === idParaRemover);
+    if (!anexo) return;
     try {
-      // 1. Apaga o arquivo físico do Storage
-      await supabase.storage.from("anexos").remove([filePath]);
-      // 2. Apaga o registro da tabela
+      // Arquivo antigo do Supabase: apaga do storage pelo caminho
+      const ehSupabase = anexo.file_path && anexo.file_path !== "cloudinary" && !anexo.file_path.startsWith("http");
+      if (ehSupabase) {
+        await supabase.storage.from("anexos").remove([anexo.file_path]);
+      } else {
+        // Arquivo novo do Cloudinary: deleta via rota segura do servidor
+        await deletarDoCloudinary(anexo.file_url);
+      }
       await supabase.from("orcamento_anexos").delete().eq("id", idParaRemover);
-      // 3. Remove da tela
       setAnexosSalvos(anexosSalvos.filter(a => a.id !== idParaRemover));
     } catch (error) {
-      alert("Erro ao apagar anexo do banco de dados.");
+      alert("Erro ao apagar anexo.");
+      console.error(error);
     }
   };
 
@@ -319,29 +327,25 @@ function FormularioOrcamento() {
       const { error: erroItens } = await supabase.from("itens_orcamento").insert(itensParaBanco);
       if (erroItens) throw erroItens;
 
-      // 🚀 UPLOAD DE NOVOS ANEXOS
+      // 🚀 UPLOAD DE NOVOS ANEXOS (CLOUDINARY) — Sistema Híbrido
       if (arquivosAnexos.length > 0) {
         const anexosParaSalvar = [];
         for (const file of arquivosAnexos) {
-          // Comprime imagens antes do upload; outros tipos ficam intactos
-          const fileParaUpload = await comprimirImagem(file);
-          const isJpeg = fileParaUpload.type === "image/jpeg";
-          const ext = isJpeg ? "jpg" : (file.name.split('.').pop() || "bin");
-          const filePath = `${user.id}/${idFinal}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-
-          const { error: uploadError } = await supabase.storage.from("anexos").upload(filePath, fileParaUpload);
-
-          if (!uploadError) {
-            const { data: { publicUrl } } = supabase.storage.from("anexos").getPublicUrl(filePath);
+          try {
+            // Comprime imagens antes do upload (PDFs passam como estão)
+            const fileParaUpload = await comprimirImagem(file);
+            // Envia para o Cloudinary
+            const linkCloudinary = await uploadParaCloudinary(fileParaUpload);
             anexosParaSalvar.push({
               orcamento_id: idFinal,
               file_name: file.name,
-              file_url: publicUrl,
-              file_path: filePath
+              file_url: linkCloudinary,
+              file_path: "cloudinary" // Marca como Cloudinary para a faxina híbrida
             });
+          } catch (err) {
+            console.error("Falha ao subir anexo:", file.name, err);
           }
         }
-
         if (anexosParaSalvar.length > 0) {
           await supabase.from("orcamento_anexos").insert(anexosParaSalvar);
         }
@@ -647,7 +651,7 @@ function FormularioOrcamento() {
                         <a href={anexo.file_url} target="_blank" rel="noreferrer" className="truncate text-blue-700 hover:underline max-w-[200px]">
                           {anexo.file_name}
                         </a>
-                        <button type="button" onClick={() => removerAnexoSalvo(anexo.id, anexo.file_path)} className="text-red-500 hover:text-red-700 font-bold ml-2">X</button>
+                        <button type="button" onClick={() => removerAnexoSalvo(anexo.id)} className="text-red-500 hover:text-red-700 font-bold ml-2">X</button>
                       </li>
                     ))}
                   </ul>
