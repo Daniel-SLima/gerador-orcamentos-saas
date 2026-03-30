@@ -12,7 +12,10 @@ import {
   StyleSheet,
   Image as PDFImage,
   Link as PDFLink,
+  Font,
 } from "@react-pdf/renderer";
+
+Font.registerHyphenationCallback((word) => [word]);
 import {
   DadosImpressao,
   ItemOrcamento,
@@ -116,9 +119,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  colImg: { width: "15%", alignItems: "center", justifyContent: "center" },
-  colDesc: { width: "40%", paddingRight: 5, justifyContent: "center" },
-  colDescHeader: { width: "40%" },
+  colIndex: { width: "5%", alignItems: "center", justifyContent: "center" },
+  colImg: { width: "12%", alignItems: "center", justifyContent: "center" },
+  colDesc: { width: "38%", paddingLeft: 15, paddingRight: 5, justifyContent: "center" },
+  colDescHeader: { width: "38%", paddingLeft: 15 },
   colQty: { width: "10%", textAlign: "center" },
   colUnit: { width: "15%", textAlign: "right" },
   colTotal: { width: "20%", textAlign: "right", fontWeight: "bold", color: "#111827" },
@@ -342,7 +346,7 @@ export const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
         </Text>
         {vendedor ? (
           <>
-            <Text style={[styles.invoiceDetails, { marginTop: 4 }]}>Vendedor: {vendedor.nome}</Text>
+            <Text style={[styles.invoiceDetails, { marginTop: 4 }]}>Comercial: {vendedor.nome}</Text>
             {vendedor.email && <Text style={styles.invoiceDetails}>{vendedor.email}</Text>}
           </>
         ) : null}
@@ -403,6 +407,9 @@ export const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
         {/* Tabela de itens */}
         <View style={styles.table}>
           <View style={styles.tableHeader} fixed>
+            <View style={styles.colIndex}>
+              <Text style={styles.tableHeaderText}>Item</Text>
+            </View>
             <View style={styles.colImg}>
               <Text style={styles.tableHeaderText}>Imagem</Text>
             </View>
@@ -426,6 +433,9 @@ export const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
               : item.produtos?.imagem_url;
             return (
               <View style={styles.tableRow} key={index} wrap={false}>
+                <View style={styles.colIndex}>
+                  <Text style={[styles.tableCell, { fontWeight: "bold" }]}>{String.fromCharCode(65 + index)}</Text>
+                </View>
                 <View style={styles.colImg}>
                   {urlDaImagem ? (
                     <PDFImage src={urlDaImagem} style={styles.itemImage} />
@@ -524,7 +534,7 @@ export const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
             {dados.orcamento.observacoes ? dados.orcamento.observacoes + "\n" : ""}
             {"Os serviços só poderão ser executados mediante autorização do cliente.\n"}
             {"Licença junto à Prefeitura é de responsabilidade do cliente.\n"}
-            {"O cliente deverá fornecer ponto de energia elétrica junto ao local de instalação do letreiro."}
+            {"O cliente deverá fornecer ponto de energia elétrica junto ao local de instalação."}
           </Text>
         </View>
 

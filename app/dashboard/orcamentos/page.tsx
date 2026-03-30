@@ -531,7 +531,7 @@ function FormularioOrcamento() {
               <div key={index} className="p-4 bg-gray-50/30">
                 <div className="flex justify-between items-start mb-3">
                   <div className="pr-4">
-                    <h3 className="font-bold text-gray-900">{item.descricao}</h3>
+                    <h3 className="font-bold text-gray-900">{String.fromCharCode(65 + index)} - {item.descricao}</h3>
                     {item.medidas && <p className="text-xs text-gray-500 mt-1"><span className="font-semibold text-gray-400">Medidas:</span> {item.medidas}</p>}
                   </div>
                   <div className="flex gap-2">
@@ -573,7 +573,7 @@ function FormularioOrcamento() {
                 {itens.map((item, index) => (
                   <tr key={index} className="hover:bg-gray-50 transition-colors">
                     <td className="py-3 px-4">
-                      <p className="font-bold text-gray-800">{item.descricao}</p>
+                      <p className="font-bold text-gray-800">{String.fromCharCode(65 + index)} - {item.descricao}</p>
                       {item.medidas && <p className="text-xs text-gray-500 mt-0.5">Medidas: {item.medidas}</p>}
                     </td>
                     <td className="py-3 px-4 text-center text-gray-600 font-medium">{item.quantidade}</td>

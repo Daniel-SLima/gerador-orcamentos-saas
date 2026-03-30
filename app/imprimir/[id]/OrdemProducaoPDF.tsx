@@ -109,8 +109,8 @@ const styles = StyleSheet.create({
   },
 
   colImg: { width: "15%", alignItems: "center", justifyContent: "center" },
-  colDesc: { width: "75%", paddingRight: 5, justifyContent: "center" },
-  colDescHeader: { width: "75%" },
+  colDesc: { width: "75%", paddingLeft: 15, paddingRight: 5, justifyContent: "center" },
+  colDescHeader: { width: "75%", paddingLeft: 15 },
   colQty: { width: "10%", textAlign: "center" },
 
   tableCell: { fontSize: 9, color: "#374151" },
