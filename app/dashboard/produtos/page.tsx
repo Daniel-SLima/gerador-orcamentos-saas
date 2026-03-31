@@ -52,6 +52,8 @@ export default function ProdutosPage() {
     confirmando: boolean;
   }>({ aberto: false, produto: null, orcamentos: [], confirmando: false });
 
+  const [excluindoTodos, setExcluindoTodos] = useState(false);
+
   const [codigoItem, setCodigoItem] = useState("");
   const [descricao, setDescricao] = useState("");
   const [medidas, setMedidas] = useState("");
@@ -327,6 +329,19 @@ export default function ProdutosPage() {
     }
   };
 
+  const excluirTodosInativos = async () => {
+    const confirmado = await showConfirm(
+      `Tem certeza que deseja excluir todos os ${produtosInativos.length} produtos inativos? Esta ação não pode ser desfeita.`,
+      { type: "error", title: "Excluir Todos os Inativos", confirmLabel: "Sim, excluir todos", cancelLabel: "Cancelar" }
+    );
+    if (!confirmado) return;
+    setExcluindoTodos(true);
+    for (const produto of produtosInativos) {
+      await executarDelecaoProduto(produto);
+    }
+    setExcluindoTodos(false);
+  };
+
   const toggleMenu = (id: string) => {
     if (menuAbertoId === id) setMenuAbertoId(null);
     else setMenuAbertoId(id);
@@ -441,6 +456,58 @@ export default function ProdutosPage() {
         </div>
       </div>
 
+      {/* Painel de limpeza automática — aparece quando PRAZO_ALERTA_DIAS estiver ativo */}
+      {PRAZO_ALERTA_DIAS !== null && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6 overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center">
+                <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-800">Limpeza Automática de Produtos</h3>
+                <p className="text-xs text-gray-500">
+                  Prazo: <strong>{PRAZO_ALERTA_DIAS} dias</strong> — {produtosInativos.length === 0 ? "Nenhum produto inativo" : `${produtosInativos.length} produto(s) inativos`}
+                </p>
+              </div>
+            </div>
+            {produtosInativos.length > 0 && (
+              <button
+                onClick={excluirTodosInativos}
+                disabled={excluindoTodos}
+                className="text-xs font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 px-4 py-2 rounded-xl transition-colors cursor-pointer shrink-0"
+              >
+                {excluindoTodos ? "Excluindo..." : `Excluir Todos (${produtosInativos.length})`}
+              </button>
+            )}
+          </div>
+
+          {produtosInativos.length > 0 && (
+            <div className="px-6 py-4 space-y-2 max-h-64 overflow-y-auto">
+              {produtosInativos.map(p => (
+                <div key={p.id} className="flex items-center justify-between bg-red-50 border border-red-100 rounded-lg px-4 py-2.5">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{p.descricao}</p>
+                    <p className="text-xs text-red-500">Sem uso há {labelUltimoUso(p.ultimo_uso)}</p>
+                  </div>
+                  <button
+                    onClick={() => deletarProduto(p)}
+                    className="text-xs font-bold text-red-600 hover:text-red-800 bg-red-100 hover:bg-red-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer shrink-0"
+                  >
+                    Excluir
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {produtosInativos.length === 0 && (
+            <div className="px-6 py-4 text-sm text-gray-500 flex items-center gap-2">
+              <span className="text-green-500">✅</span> Nenhum produto passou do prazo de inatividade.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Listagem */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-visible">
