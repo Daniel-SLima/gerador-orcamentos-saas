@@ -12,7 +12,7 @@ export async function uploadParaCloudinary(arquivo: File): Promise<string> {
   const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
   if (!cloudName || !uploadPreset) {
-    throw new Error("Variáveis do Cloudinary não estão configuradas. Verifique o .env.local");
+    throw new Error("Serviço de armazenamento não configurado. Contate o suporte.");
   }
 
   const formData = new FormData();
@@ -31,7 +31,7 @@ export async function uploadParaCloudinary(arquivo: File): Promise<string> {
     const dados = await resposta.json();
 
     if (!resposta.ok) {
-      throw new Error(dados.error?.message || "Erro ao fazer upload no Cloudinary");
+      throw new Error(dados.error?.message || "Falha ao enviar o arquivo. Tente novamente.");
     }
 
     // Retorna a URL segura (HTTPS) do arquivo armazenado

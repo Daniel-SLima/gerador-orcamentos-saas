@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../lib/supabase";
 import { uploadParaCloudinary, deletarDoCloudinary } from "../../lib/uploadCloudinary";
+import { AlertModal, ConfirmModal, useAlert, useConfirm } from "../../components/AlertModal";
 
 // Bucket legado — usado apenas para deletar logo antiga do Supabase ao substituir
 const BUCKET_LEGADO = "arquivos";
@@ -67,6 +68,8 @@ export default function PerfilEmpresa() {
   const [vendedorForm, setVendedorForm] = useState({ id: "", nome: "", telefone: "", email: "" });
   const [salvandoVendedor, setSalvandoVendedor] = useState(false);
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
+  const { showAlert, alertProps } = useAlert();
+  const { showConfirm, confirmProps } = useConfirm();
 
   // 🚀 ESTADOS DA API DO IBGE CORRIGIDOS E ALINHADOS
   const [estados, setEstados] = useState<EstadoIBGE[]>([]);
@@ -163,7 +166,7 @@ export default function PerfilEmpresa() {
       let urlFinalDaLogo = formData.logo_url;
 
       if (arquivoSelecionado) {
-        setMessage("⬆️ Fazendo upload da nova logo para o Cloudinary...");
+        setMessage("⬆️ Fazendo upload da nova logo...");
         // 🚀 Nova logo sempre vai para o Cloudinary
         urlFinalDaLogo = await uploadParaCloudinary(arquivoSelecionado);
 
@@ -235,7 +238,10 @@ export default function PerfilEmpresa() {
 
   const salvarVendedor = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!vendedorForm.nome) return alert("O nome é obrigatório.");
+    if (!vendedorForm.nome) {
+      showAlert("O nome do vendedor é obrigatório.", { type: "warning", title: "Campo obrigatório" });
+      return;
+    }
     setSalvandoVendedor(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -252,7 +258,7 @@ export default function PerfilEmpresa() {
       }
       setVendedorForm({ id: "", nome: "", telefone: "", email: "" }); 
     } catch (error) {
-      alert("Erro ao salvar vendedor: " + (error as Error).message);
+      showAlert("Erro ao salvar vendedor: " + (error as Error).message, { type: "error", title: "Erro" });
     } finally {
       setSalvandoVendedor(false);
     }
@@ -264,15 +270,21 @@ export default function PerfilEmpresa() {
   };
 
   const excluirVendedor = async (id: string, nome: string) => {
-    if (!window.confirm(`Tem certeza que deseja apagar o vendedor ${nome}?`)) return;
+    const confirmado = await showConfirm(`Tem certeza que deseja apagar o vendedor ${nome}? Esta ação não pode ser desfeita.`, {
+      type: "error",
+      title: "Excluir Vendedor",
+      confirmLabel: "Sim, excluir",
+      cancelLabel: "Cancelar",
+    });
+    if (!confirmado) return;
     try {
       const { error } = await supabase.from("vendedores").delete().eq("id", id);
       if (error) throw error;
       setVendedores(vendedores.filter(v => v.id !== id));
       setMenuAbertoId(null);
     } catch (err) {
-      console.error(err); // Resolve o erro de 'variável não usada'
-      alert("Erro ao excluir. Verifique se ele não está atrelado a algum orçamento.");
+      console.error(err);
+      showAlert("Erro ao excluir. Verifique se ele não está atrelado a algum orçamento.", { type: "error", title: "Não foi possível excluir" });
     }
   };
 
@@ -443,6 +455,9 @@ export default function PerfilEmpresa() {
           </div>
         </div>
       </div>
+      {/* Modais customizados */}
+      <AlertModal {...alertProps} />
+      <ConfirmModal {...confirmProps} />
     </div>
   );
 }

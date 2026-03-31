@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
+import { deletarDoCloudinary } from "../../lib/uploadCloudinary";
+import { AlertModal, ConfirmModal, useAlert, useConfirm } from "../../components/AlertModal";
 import { useRouter } from "next/navigation";
 import { usePerfilUsuario } from "../../hooks/usePerfilUsuario";
 
@@ -44,6 +46,8 @@ export default function HistoricoOrcamentosPage() {
   const [menuDirection, setMenuDirection] = useState<'up' | 'down'>('down');
   const router = useRouter();
   const { isAdmin, loadingPerfil } = usePerfilUsuario();
+  const { showAlert, alertProps } = useAlert();
+  const { showConfirm, confirmProps } = useConfirm();
 
   const [termoBusca, setTermoBusca] = useState("");
   const [tipoFiltro, setTipoFiltro] = useState("todos"); // 'todos', 'mes', 'dia'
@@ -54,6 +58,11 @@ export default function HistoricoOrcamentosPage() {
   const [modalAnexosAberto, setModalAnexosAberto] = useState(false);
   const [anexosAtuais, setAnexosAtuais] = useState<Anexo[]>([]);
   const [loadingAnexos, setLoadingAnexos] = useState(false);
+  // mapa de url -> true (existe) | false (perdido)
+  const [urlExistentes, setUrlExistentes] = useState<Record<string, boolean>>({});
+
+  // 🚀 ESTADO DE LOADING AO EXCLUIR (item 6)
+  const [deletandoId, setDeletandoId] = useState<string | null>(null);
 
   // 🚀 ESTADOS DO MODAL DE GERAR OP
   const [modalOpAberto, setModalOpAberto] = useState(false);
@@ -109,12 +118,35 @@ export default function HistoricoOrcamentosPage() {
   };
 
   const deletarOrcamento = async (id: string) => {
-    if (!window.confirm("Tem certeza que deseja excluir este orçamento permanentemente?")) return;
+    const confirmado = await showConfirm("Tem certeza que deseja excluir este orçamento permanentemente? Esta ação não pode ser desfeita.", {
+      type: "error",
+      title: "Excluir Orçamento",
+      confirmLabel: "Sim, excluir",
+      cancelLabel: "Cancelar",
+    });
+    if (!confirmado) return;
 
+    setDeletandoId(id);
+    setMenuAbertoId(null);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Sessão expirada.");
 
+      // 1️⃣ Busca todos os anexos do orçamento para limpar o Cloudinary
+      const { data: anexos } = await supabase
+        .from("orcamento_anexos")
+        .select("id, file_url")
+        .eq("orcamento_id", id);
+
+      // 2️⃣ Remove cada arquivo do Cloudinary em paralelo (silencioso em caso de falha)
+      if (anexos && anexos.length > 0) {
+        await Promise.all(anexos.map((a) => deletarDoCloudinary(a.file_url)));
+
+        // 3️⃣ Remove os registros da tabela orcamento_anexos
+        await supabase.from("orcamento_anexos").delete().eq("orcamento_id", id);
+      }
+
+      // 4️⃣ Remove os itens e o orçamento do banco
       let queryItens = supabase.from("itens_orcamento").delete().eq("orcamento_id", id);
       let queryOrc = supabase.from("orcamentos").delete().eq("id", id);
 
@@ -128,9 +160,10 @@ export default function HistoricoOrcamentosPage() {
 
       if (error) throw error;
       setOrcamentos(orcamentos.filter(orc => orc.id !== id));
-      setMenuAbertoId(null);
     } catch (error) {
-      alert("Erro ao excluir orçamento: " + (error as Error).message);
+      showAlert("Erro ao excluir orçamento: " + (error as Error).message, { type: "error", title: "Erro" });
+    } finally {
+      setDeletandoId(null);
     }
   };
 
@@ -158,7 +191,7 @@ export default function HistoricoOrcamentosPage() {
       if (error) throw error;
       setOrcamentos(orcamentos.map(orc => orc.id === id ? { ...orc, status: novoStatus } : orc));
     } catch (error) {
-      alert("Erro ao mudar status: " + (error as Error).message);
+      showAlert("Erro ao mudar status: " + (error as Error).message, { type: "error", title: "Erro" });
     }
   };
 
@@ -239,21 +272,40 @@ export default function HistoricoOrcamentosPage() {
         window.open(`/imprimir/${orcamentoOpSelecionado}?action=op`, "_blank");
       }
     } catch (error) {
-      alert("Erro ao salvar detalhes da OP: " + (error as Error).message);
+      showAlert("Erro ao salvar detalhes da OP: " + (error as Error).message, { type: "error", title: "Erro" });
     } finally {
       setSalvandoOp(false);
     }
   };
 
-  // 🚀 FUNÇÃO PARA ABRIR O MODAL E BUSCAR OS ANEXOS NO BANCO
+  // 🚀 FUNÇÃO PARA ABRIR O MODAL E BUSCAR OS ANEXOS NO BANCO (item 1)
   const verAnexos = async (orcamentoId: string) => {
     setMenuAbertoId(null);
     setModalAnexosAberto(true);
     setLoadingAnexos(true);
     setAnexosAtuais([]);
+    setUrlExistentes({});
 
     const { data } = await supabase.from("orcamento_anexos").select("*").eq("orcamento_id", orcamentoId);
-    if (data) setAnexosAtuais(data);
+    if (data && data.length > 0) {
+      setAnexosAtuais(data);
+      // Verifica via API server-side quais URLs do Cloudinary ainda existem
+      const urls = data.map((a: Anexo) => a.file_url);
+      try {
+        const resp = await fetch("/api/cloudinary-check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ urls }),
+        });
+        const { results } = await resp.json();
+        setUrlExistentes(results ?? {});
+      } catch {
+        // Se a verificação falhar, assume que todos existem
+        const fallback: Record<string, boolean> = {};
+        urls.forEach((u: string) => { fallback[u] = true; });
+        setUrlExistentes(fallback);
+      }
+    }
     setLoadingAnexos(false);
   };
 
@@ -417,8 +469,12 @@ export default function HistoricoOrcamentosPage() {
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg> Duplicar
                         </button>
                         <div className="h-px bg-gray-100 my-1 mx-2"></div>
-                        <button onClick={(e) => { e.stopPropagation(); deletarOrcamento(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> Excluir
+                        <button onClick={(e) => { e.stopPropagation(); deletarOrcamento(orc.id); }} disabled={deletandoId === orc.id} className="px-4 py-2.5 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-wait w-full">
+                          {deletandoId === orc.id ? (
+                            <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Excluindo...</>
+                          ) : (
+                            <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> Excluir</>
+                          )}
                         </button>
                       </div>
                     )}
@@ -527,8 +583,12 @@ export default function HistoricoOrcamentosPage() {
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg> Duplicar
                             </button>
                             <div className="h-px bg-gray-100 my-1 mx-2"></div>
-                            <button onClick={(e) => { e.stopPropagation(); deletarOrcamento(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> Excluir
+                            <button onClick={(e) => { e.stopPropagation(); deletarOrcamento(orc.id); }} disabled={deletandoId === orc.id} className="px-4 py-2.5 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-wait w-full">
+                              {deletandoId === orc.id ? (
+                                <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Excluindo...</>
+                              ) : (
+                                <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> Excluir</>
+                              )}
                             </button>
                           </div>
                         )}
@@ -554,23 +614,51 @@ export default function HistoricoOrcamentosPage() {
               </button>
             </div>
             <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              {/* Aviso informativo sobre expiração — sempre visível no topo (item 3) */}
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                <span className="text-amber-500 text-base mt-0.5">⏱️</span>
+                <p className="text-xs text-amber-700 font-medium leading-snug">
+                  Anexos enviados expiram automaticamente após <strong>15 dias</strong> do upload. O nome do arquivo é mantido para referência.
+                </p>
+              </div>
+
               {loadingAnexos ? (
-                <p className="text-center text-gray-500 py-4">Buscando anexos...</p>
+                <p className="text-center text-gray-500 py-4">Buscando e verificando anexos...</p>
               ) : anexosAtuais.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-gray-500 font-medium">Nenhum anexo encontrado.</p>
-                  <p className="text-xs text-gray-400 mt-1">Lembrando que arquivos antigos são apagados automaticamente.</p>
+                  <svg className="w-10 h-10 text-gray-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                  <p className="text-gray-500 font-medium">Nenhum anexo neste orçamento.</p>
                 </div>
               ) : (
                 <ul className="space-y-3">
-                  {anexosAtuais.map((anexo) => (
-                    <li key={anexo.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-200">
-                      <span className="text-sm font-medium text-gray-700 truncate mr-4" title={anexo.file_name}>{anexo.file_name}</span>
-                      <a href={anexo.file_url} target="_blank" rel="noreferrer" className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 px-4 rounded-lg transition-colors shadow-sm">
-                        Abrir
-                      </a>
-                    </li>
-                  ))}
+                  {anexosAtuais.map((anexo) => {
+                    const existe = urlExistentes[anexo.file_url] !== false;
+                    return (
+                      <li key={anexo.id} className={`flex justify-between items-center p-4 rounded-xl border ${
+                        existe ? "bg-gray-50 border-gray-200" : "bg-red-50 border-red-200"
+                      }`}>
+                        <div className="flex flex-col mr-4 min-w-0">
+                          <span className={`text-sm font-medium truncate ${
+                            existe ? "text-gray-700" : "text-red-600 line-through"
+                          }`} title={anexo.file_name}>
+                            {anexo.file_name}
+                          </span>
+                          {!existe && (
+                            <span className="text-xs text-red-500 font-semibold mt-0.5">⚠️ Anexo expirado — arquivo não está mais disponível</span>
+                          )}
+                        </div>
+                        {existe ? (
+                          <a href={anexo.file_url} target="_blank" rel="noreferrer" className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 px-4 rounded-lg transition-colors shadow-sm">
+                            Abrir
+                          </a>
+                        ) : (
+                          <span className="shrink-0 bg-red-100 text-red-400 text-xs font-bold py-2 px-4 rounded-lg cursor-not-allowed">
+                            Indisponível
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -642,6 +730,9 @@ export default function HistoricoOrcamentosPage() {
           </div>
         </div>
       )}
+      {/* Modais customizados */}
+      <AlertModal {...alertProps} />
+      <ConfirmModal {...confirmProps} />
     </div>
   );
 }

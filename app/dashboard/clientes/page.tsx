@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
+import { AlertModal, ConfirmModal, useAlert, useConfirm } from "../../components/AlertModal";
 
 interface Cliente {
   id: string;
@@ -41,6 +42,8 @@ export default function ClientesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [clienteEditandoId, setClienteEditandoId] = useState<string | null>(null);
+  const { showAlert, alertProps } = useAlert();
+  const { showConfirm, confirmProps } = useConfirm();
 
   const [nomeRazaoSocial, setNomeRazaoSocial] = useState("");
   const [cpfCnpj, setCpfCnpj] = useState("");
@@ -220,7 +223,13 @@ export default function ClientesPage() {
   };
 
   const deletarCliente = async (id: string) => {
-    if (!window.confirm("Tem certeza que deseja excluir este cliente?")) return;
+    const confirmado = await showConfirm("Tem certeza que deseja excluir este cliente? Esta ação não pode ser desfeita.", {
+      type: "error",
+      title: "Excluir Cliente",
+      confirmLabel: "Sim, excluir",
+      cancelLabel: "Cancelar",
+    });
+    if (!confirmado) return;
     try {
       const { error } = await supabase.from("clientes").delete().eq("id", id);
       if (error) throw error;
@@ -228,7 +237,7 @@ export default function ClientesPage() {
       if (clienteEditandoId === id) limparFormulario();
       setMenuAbertoId(null);
     } catch (error) {
-      alert("Erro ao excluir cliente: " + (error as Error).message);
+      showAlert("Erro ao excluir cliente: " + (error as Error).message, { type: "error", title: "Erro" });
     }
   };
 
@@ -419,6 +428,9 @@ export default function ClientesPage() {
           </div>
         )}
       </div>
+      {/* Modais customizados */}
+      <AlertModal {...alertProps} />
+      <ConfirmModal {...confirmProps} />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../lib/supabase";
 import { comprimirImagem } from "../../lib/comprimirImagem";
 import { uploadParaCloudinary, deletarDoCloudinary } from "../../lib/uploadCloudinary";
+import { AlertModal, ConfirmModal, useAlert, useConfirm } from "../../components/AlertModal";
 
 // Bucket legado — ainda usado para deletar imagens antigas do Supabase
 const BUCKET_LEGADO = "arquivos";
@@ -25,6 +26,14 @@ interface Produto {
   medidas: string;
   valor_unitario: number;
   imagem_url: string;
+  ultimo_uso: string | null; // ISO timestamp — null = nunca foi usado
+}
+
+interface OrcamentoVinculado {
+  id: string;
+  data_emissao: string;
+  status: string;
+  cliente_nome: string;
 }
 
 export default function ProdutosPage() {
@@ -32,6 +41,16 @@ export default function ProdutosPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [produtoEditandoId, setProdutoEditandoId] = useState<string | null>(null);
+  const { showAlert, alertProps } = useAlert();
+  const { showConfirm, confirmProps } = useConfirm();
+
+  // Modal de vínculos com orçamentos
+  const [modalVinculos, setModalVinculos] = useState<{
+    aberto: boolean;
+    produto: Produto | null;
+    orcamentos: OrcamentoVinculado[];
+    confirmando: boolean;
+  }>({ aberto: false, produto: null, orcamentos: [], confirmando: false });
 
   const [codigoItem, setCodigoItem] = useState("");
   const [descricao, setDescricao] = useState("");
@@ -49,6 +68,50 @@ export default function ProdutosPage() {
 
   // 🚀 NOVO ESTADO: Termo de Busca
   const [termoBusca, setTermoBusca] = useState("");
+
+  // 🕐 CONFIGURAÇÃO DE PRAZO DE INATIVIDADE (a ser definido pelo cliente)
+  // null = sem limite ativo. Trocar para ex: 180 quando o cliente definir.
+  const PRAZO_ALERTA_DIAS: number | null = null;
+
+  /** Calcula quantos dias se passaram desde o ultimo_uso (ou desde sempre se null) */
+  const diasDeInatividade = (ultimoUso: string | null): number | null => {
+    if (!ultimoUso) return null; // nunca usado — tratado separadamente
+    const diff = Date.now() - new Date(ultimoUso).getTime();
+    return Math.floor(diff / (1000 * 60 * 60 * 24));
+  };
+
+  /** Retorna o label compacto de "Último uso" */
+  const labelUltimoUso = (ultimoUso: string | null): string => {
+    if (!ultimoUso) return "Nunca";
+    const dias = diasDeInatividade(ultimoUso)!;
+    if (dias === 0) return "Hoje";
+    if (dias === 1) return "1 dia";
+    if (dias < 30) return `${dias} dias`;
+    const meses = Math.floor(dias / 30);
+    if (meses === 1) return "1 mês";
+    if (meses < 12) return `${meses} meses`;
+    const anos = Math.floor(dias / 365);
+    return anos === 1 ? "1 ano" : `${anos} anos`;
+  };
+
+  /** Retorna classes de cor baseado na inatividade */
+  const corInatividade = (ultimoUso: string | null): { badge: string; text: string } => {
+    if (!ultimoUso) return { badge: "bg-gray-100 text-gray-500", text: "text-gray-400" };
+    const dias = diasDeInatividade(ultimoUso)!;
+    if (dias <= 30) return { badge: "bg-green-100 text-green-700", text: "text-green-600" };
+    if (dias <= 90) return { badge: "bg-blue-100 text-blue-700", text: "text-blue-600" };
+    if (dias <= 180) return { badge: "bg-amber-100 text-amber-700", text: "text-amber-600" };
+    return { badge: "bg-red-100 text-red-700", text: "text-red-600" };
+  };
+
+  /** Verifica se produto deve ser alertado como inativo */
+  const estaInativo = (produto: Produto): boolean => {
+    if (!PRAZO_ALERTA_DIAS) return false;
+    if (!produto.ultimo_uso) return true; // nunca usado: sempre inativo se houver prazo
+    return (diasDeInatividade(produto.ultimo_uso) ?? 0) >= PRAZO_ALERTA_DIAS;
+  };
+
+  const produtosInativos = PRAZO_ALERTA_DIAS ? produtos.filter(estaInativo) : [];
 
   useEffect(() => {
     carregarProdutos();
@@ -197,8 +260,48 @@ export default function ProdutosPage() {
   };
 
   const deletarProduto = async (produtoParaDeletar: Produto) => {
-    if (!window.confirm("Tem certeza que deseja excluir este item e sua imagem associada?")) return;
+    // 1️⃣ Busca orçamentos vinculados a este produto
+    const { data: vinculos } = await supabase
+      .from("itens_orcamento")
+      .select(`orcamento_id, orcamentos!inner(id, data_emissao, status, cliente_id, clientes(nome_razao_social))`)
+      .eq("produto_id", produtoParaDeletar.id);
 
+    const orcamentosVinculados: OrcamentoVinculado[] = [];
+    if (vinculos && vinculos.length > 0) {
+      // Deduplicar por orcamento_id
+      const vistos = new Set<string>();
+      for (const v of vinculos) {
+        const orc = v.orcamentos as unknown as { id: string; data_emissao: string; status: string; clientes: { nome_razao_social: string } | null };
+        if (orc && !vistos.has(orc.id)) {
+          vistos.add(orc.id);
+          orcamentosVinculados.push({
+            id: orc.id,
+            data_emissao: orc.data_emissao,
+            status: orc.status,
+            cliente_nome: orc.clientes?.nome_razao_social || "Cliente não encontrado",
+          });
+        }
+      }
+    }
+
+    if (orcamentosVinculados.length > 0) {
+      // Mostra modal específico com lista de orçamentos
+      setModalVinculos({ aberto: true, produto: produtoParaDeletar, orcamentos: orcamentosVinculados, confirmando: false });
+      return;
+    }
+
+    // Sem vínculos: confirmação simples
+    const confirmado = await showConfirm("Tem certeza que deseja excluir este produto? Esta ação não pode ser desfeita.", {
+      type: "error",
+      title: "Excluir Produto",
+      confirmLabel: "Sim, excluir",
+      cancelLabel: "Cancelar",
+    });
+    if (!confirmado) return;
+    await executarDelecaoProduto(produtoParaDeletar);
+  };
+
+  const executarDelecaoProduto = async (produtoParaDeletar: Produto) => {
     try {
       const { error } = await supabase
         .from("produtos")
@@ -207,14 +310,12 @@ export default function ProdutosPage() {
 
       if (error) throw error;
 
-      // Se a imagem era do Supabase Storage (legado), apaga ela de lá também
       if (eImagemDoSupabase(produtoParaDeletar.imagem_url)) {
         const caminhoParaDeletar = extrairCaminhoStorage(produtoParaDeletar.imagem_url);
         if (caminhoParaDeletar) {
           await supabase.storage.from(BUCKET_LEGADO).remove([caminhoParaDeletar]);
         }
       } else {
-        // Se era do Cloudinary, deleta via rota segura do servidor
         await deletarDoCloudinary(produtoParaDeletar.imagem_url);
       }
 
@@ -222,7 +323,7 @@ export default function ProdutosPage() {
       if (produtoEditandoId === produtoParaDeletar.id) limparFormulario();
       setMenuAbertoId(null);
     } catch (error) {
-      alert("Erro ao excluir produto: " + (error as Error).message);
+      showAlert("Erro ao excluir produto: " + (error as Error).message, { type: "error", title: "Erro" });
     }
   };
 
@@ -340,6 +441,7 @@ export default function ProdutosPage() {
         </div>
       </div>
 
+
       {/* Listagem */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-visible">
         {loading ? (
@@ -381,6 +483,10 @@ export default function ProdutosPage() {
                       {produto.codigo_item && <p><span className="font-medium text-gray-500">Cód:</span> {produto.codigo_item}</p>}
                       {produto.medidas && <p><span className="font-medium text-gray-500">Medidas:</span> {produto.medidas}</p>}
                       <p className="font-bold text-green-600 pt-1 text-base">{formatarMoeda(produto.valor_unitario)}</p>
+                      {/* Badge de último uso */}
+                      <span className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${corInatividade(produto.ultimo_uso).badge}`}>
+                        {labelUltimoUso(produto.ultimo_uso)}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -396,6 +502,7 @@ export default function ProdutosPage() {
                     <th className="p-4 text-sm font-semibold text-gray-600">Descrição</th>
                     <th className="p-4 text-sm font-semibold text-gray-600">Medidas</th>
                     <th className="p-4 text-sm font-semibold text-gray-600">Valor Unitário</th>
+                    <th className="p-4 text-sm font-semibold text-gray-600">Último Uso</th>
                     <th className="p-4 text-sm font-semibold text-gray-600 text-center">Ações</th>
                   </tr>
                 </thead>
@@ -416,6 +523,11 @@ export default function ProdutosPage() {
                       <td className="p-4 text-gray-900 font-medium">{produto.descricao}</td>
                       <td className="p-4 text-gray-600">{produto.medidas || "-"}</td>
                       <td className="p-4 text-green-600 font-bold">{formatarMoeda(produto.valor_unitario)}</td>
+                      <td className="p-4">
+                        <span className={`inline-block text-[11px] font-semibold px-2.5 py-1 rounded-full ${corInatividade(produto.ultimo_uso).badge}`}>
+                          {labelUltimoUso(produto.ultimo_uso)}
+                        </span>
+                      </td>
 
                       <td className="p-4 text-center relative">
                         <button onClick={(e) => { e.stopPropagation(); toggleMenu(produto.id); }} className="p-2 mx-auto text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors focus:outline-none flex justify-center"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg></button>
@@ -436,6 +548,82 @@ export default function ProdutosPage() {
           </div>
         )}
       </div>
+      {/* Modais customizados */}
+      <AlertModal {...alertProps} />
+      <ConfirmModal {...confirmProps} />
+
+      {/* Modal de produto vinculado a orçamentos */}
+      {modalVinculos.aberto && modalVinculos.produto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in">
+            {/* Header */}
+            <div className="bg-amber-50 border-b border-amber-100 px-6 py-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-base">Produto vinculado a orçamentos</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Este produto está em {modalVinculos.orcamentos.length} orçamento(s)</p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-4">
+              <p className="text-sm text-gray-600 mb-1">
+                O produto <strong className="text-gray-900">&ldquo;{modalVinculos.produto.descricao}&rdquo;</strong> está presente nos seguintes orçamentos:
+              </p>
+              <p className="text-xs text-gray-400 mb-4">Os dados já salvos nesses orçamentos <strong>não serão apagados</strong> — apenas o produto será removido do catálogo.</p>
+
+              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                {modalVinculos.orcamentos.map(orc => {
+                  const statusColor: Record<string, string> = {
+                    "Aberto": "bg-blue-100 text-blue-700",
+                    "Aprovado": "bg-green-100 text-green-700",
+                    "Reprovado": "bg-red-100 text-red-700",
+                    "Rascunho": "bg-gray-100 text-gray-600",
+                  };
+                  const cor = statusColor[orc.status] || "bg-gray-100 text-gray-600";
+                  const data = orc.data_emissao
+                    ? new Date(orc.data_emissao + "T00:00:00").toLocaleDateString("pt-BR")
+                    : "Sem data";
+                  return (
+                    <div key={orc.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-2.5 border border-gray-100">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">{orc.cliente_nome}</p>
+                        <p className="text-xs text-gray-400">{data}</p>
+                      </div>
+                      <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${cor}`}>{orc.status}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
+              <button
+                onClick={() => setModalVinculos({ aberto: false, produto: null, orcamentos: [], confirmando: false })}
+                className="px-5 py-2.5 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                disabled={modalVinculos.confirmando}
+                onClick={async () => {
+                  setModalVinculos(prev => ({ ...prev, confirmando: true }));
+                  await executarDelecaoProduto(modalVinculos.produto!);
+                  setModalVinculos({ aberto: false, produto: null, orcamentos: [], confirmando: false });
+                }}
+                className="px-5 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {modalVinculos.confirmando ? "Excluindo..." : "Sim, excluir mesmo assim"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense, useRef } from "react";
 import { supabase } from "../../lib/supabase";
 import { comprimirImagem } from "../../lib/comprimirImagem";
 import { uploadParaCloudinary, deletarDoCloudinary } from "../../lib/uploadCloudinary";
+import { AlertModal, ConfirmModal, useAlert, useConfirm } from "../../components/AlertModal";
 import { useSearchParams } from "next/navigation";
 import { usePerfilUsuario } from "../../hooks/usePerfilUsuario";
 
@@ -55,6 +56,8 @@ function FormularioOrcamento() {
 
   const [loadingDados, setLoadingDados] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  const { showAlert, alertProps } = useAlert();
+  const { showConfirm, confirmProps } = useConfirm();
 
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
@@ -86,6 +89,7 @@ function FormularioOrcamento() {
   // 🚀 ESTADOS PARA ANEXOS DIVIDIDOS (OS QUE JÁ EXISTEM NO BANCO E OS NOVOS)
   const [anexosSalvos, setAnexosSalvos] = useState<AnexoBanco[]>([]);
   const [arquivosAnexos, setArquivosAnexos] = useState<File[]>([]);
+  const [anexosFalhos, setAnexosFalhos] = useState<string[]>([]); // nomes dos que falharam no upload
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 🚀 ESTADOS PARA DROPDOWNS COM BUSCA
@@ -175,8 +179,8 @@ function FormularioOrcamento() {
   };
 
   const adicionarAoCarrinho = () => {
-    if (!produtoId) return alert("Selecione um produto.");
-    if (quantidade <= 0) return alert("A quantidade deve ser maior que zero.");
+    if (!produtoId) { showAlert("Selecione um produto antes de adicionar.", { type: "warning", title: "Produto não selecionado" }); return; }
+    if (quantidade <= 0) { showAlert("A quantidade deve ser maior que zero.", { type: "warning", title: "Quantidade inválida" }); return; }
 
     const produtoSelecionado = produtos.find(p => p.id === produtoId);
     if (!produtoSelecionado) return;
@@ -229,10 +233,35 @@ function FormularioOrcamento() {
     fecharModalEdicao();
   };
 
+  // Limites de tamanho (item 5)
+  const LIMITE_IMAGEM_MB = 10;
+  const LIMITE_PDF_MB = 20;
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const novosArquivos = Array.from(e.target.files);
-      setArquivosAnexos([...arquivosAnexos, ...novosArquivos]);
+      const novosValidos: File[] = [];
+      const rejeitados: string[] = [];
+
+      Array.from(e.target.files).forEach((file) => {
+        const isPdf = file.type === "application/pdf";
+        const limiteMB = isPdf ? LIMITE_PDF_MB : LIMITE_IMAGEM_MB;
+        const limitBytes = limiteMB * 1024 * 1024;
+
+        if (file.size > limitBytes) {
+          rejeitados.push(`${file.name} (máx ${limiteMB}MB para ${isPdf ? "PDFs" : "imagens"})`);
+        } else {
+          novosValidos.push(file);
+        }
+      });
+
+      if (rejeitados.length > 0) {
+        showAlert(`Os seguintes arquivos foram rejeitados por excederem o limite de tamanho:\n\n${rejeitados.join("\n")}`, { type: "warning", title: "Arquivos rejeitados" });
+      }
+      if (novosValidos.length > 0) {
+        setArquivosAnexos([...arquivosAnexos, ...novosValidos]);
+      }
+      // Reseta o input para permitir selecionar o mesmo arquivo novamente
+      if (e.target) e.target.value = "";
     }
   };
 
@@ -242,7 +271,13 @@ function FormularioOrcamento() {
 
   // 🚀 SISTEMA HÍBRIDO: Apaga com lógica certa por origem (Supabase legado vs. Cloudinary)
   const removerAnexoSalvo = async (idParaRemover: string) => {
-    if (!window.confirm("Tem certeza que deseja apagar este anexo permanentemente?")) return;
+    const confirmado = await showConfirm("Tem certeza que deseja apagar este anexo permanentemente?", {
+      type: "error",
+      title: "Apagar Anexo",
+      confirmLabel: "Sim, apagar",
+      cancelLabel: "Cancelar",
+    });
+    if (!confirmado) return;
     const anexo = anexosSalvos.find(a => a.id === idParaRemover);
     if (!anexo) return;
     try {
@@ -257,7 +292,7 @@ function FormularioOrcamento() {
       await supabase.from("orcamento_anexos").delete().eq("id", idParaRemover);
       setAnexosSalvos(anexosSalvos.filter(a => a.id !== idParaRemover));
     } catch (error) {
-      alert("Erro ao apagar anexo.");
+      showAlert("Erro ao apagar anexo.", { type: "error", title: "Erro" });
       console.error(error);
     }
   };
@@ -267,9 +302,9 @@ function FormularioOrcamento() {
   const valorTotalOrcamento = itens.reduce((acc, item) => acc + item.subtotal, 0);
 
   const gerarOuAtualizarOrcamento = async () => {
-    if (!dataEmissao) return alert("Por favor, selecione a Data de Emissão.");
-    if (!clienteId) return alert("Por favor, selecione um Cliente.");
-    if (itens.length === 0) return alert("Adicione pelo menos um produto ao orçamento.");
+    if (!dataEmissao) { showAlert("Por favor, selecione a Data de Emissão.", { type: "warning", title: "Campo obrigatório" }); return; }
+    if (!clienteId) { showAlert("Por favor, selecione um Cliente.", { type: "warning", title: "Campo obrigatório" }); return; }
+    if (itens.length === 0) { showAlert("Adicione pelo menos um produto ao orçamento.", { type: "warning", title: "Orçamento vazio" }); return; }
 
     setSalvando(true);
     try {
@@ -327,9 +362,19 @@ function FormularioOrcamento() {
       const { error: erroItens } = await supabase.from("itens_orcamento").insert(itensParaBanco);
       if (erroItens) throw erroItens;
 
+      // 📅 Atualiza o "ultimo_uso" de cada produto utilizado neste orçamento
+      const produtosUsadosIds = [...new Set(itens.map(item => item.produto_id).filter(Boolean))];
+      if (produtosUsadosIds.length > 0) {
+        await supabase
+          .from("produtos")
+          .update({ ultimo_uso: new Date().toISOString() })
+          .in("id", produtosUsadosIds);
+      }
+
       // 🚀 UPLOAD DE NOVOS ANEXOS (CLOUDINARY) — Sistema Híbrido
       if (arquivosAnexos.length > 0) {
         const anexosParaSalvar = [];
+        const falhos: string[] = [];
         for (const file of arquivosAnexos) {
           try {
             // Comprime imagens antes do upload (PDFs passam como estão)
@@ -344,18 +389,28 @@ function FormularioOrcamento() {
             });
           } catch (err) {
             console.error("Falha ao subir anexo:", file.name, err);
+            falhos.push(file.name);
           }
         }
         if (anexosParaSalvar.length > 0) {
           await supabase.from("orcamento_anexos").insert(anexosParaSalvar);
         }
+        if (falhos.length > 0) {
+          setAnexosFalhos(falhos);
+          // Não redireciona — mostra os erros primeiro
+          window.open(`/imprimir/${idFinal}?action=view`, "_blank");
+          setSalvando(false);
+          return;
+        }
       }
+
+      setAnexosFalhos([]);
 
       window.open(`/imprimir/${idFinal}?action=view`, "_blank");
       window.location.href = "/dashboard/historico";
 
     } catch (error) {
-      alert("Erro: " + (error as Error).message);
+      showAlert("Erro: " + (error as Error).message, { type: "error", title: "Erro ao salvar" });
       setSalvando(false);
     }
   };
@@ -635,7 +690,14 @@ function FormularioOrcamento() {
               </div>
 
               <div className="p-4 border-2 border-dashed border-gray-200 rounded-xl bg-white">
-                <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">📎 Anexos Opcionais (Válidos por 15 dias)</label>
+                <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">📎 Anexos Opcionais</label>
+                {/* Aviso de limites e expiração (item 4) */}
+                <div className="flex items-start gap-1.5 mb-3">
+                  <span className="text-amber-500 text-xs mt-0.5">⏱️</span>
+                  <p className="text-[11px] text-amber-700 leading-snug">
+                    Válidos por <strong>15 dias</strong>. Limite: <strong>imagens até 10MB</strong> (JPG, PNG, WEBP) e <strong>PDFs até 20MB</strong>.
+                  </p>
+                </div>
                 <input type="file" ref={fileInputRef} multiple accept="image/*,.pdf" onChange={handleFileChange} className="hidden" />
                 <button
                   onClick={(e) => { e.preventDefault(); fileInputRef.current?.click(); }}
@@ -643,6 +705,19 @@ function FormularioOrcamento() {
                 >
                   + Adicionar Foto ou PDF
                 </button>
+
+                {/* Aviso de anexos que falharam no upload (item 4) */}
+                {anexosFalhos.length > 0 && (
+                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-xs font-bold text-red-700 mb-1">⚠️ Os seguintes arquivos não foram enviados:</p>
+                    <ul className="space-y-0.5">
+                      {anexosFalhos.map((nome) => (
+                        <li key={nome} className="text-xs text-red-600 font-medium">• {nome}</li>
+                      ))}
+                    </ul>
+                    <p className="text-[11px] text-red-500 mt-1.5">Você pode tentar adicioná-los novamente editando este orçamento.</p>
+                  </div>
+                )}
 
                 {anexosSalvos.length > 0 && (
                   <ul className="mt-3 space-y-2 mb-3">
@@ -742,6 +817,9 @@ function FormularioOrcamento() {
           </div>
         </div>
       )}
+      {/* Modais customizados */}
+      <AlertModal {...alertProps} />
+      <ConfirmModal {...confirmProps} />
     </div>
   );
 }
