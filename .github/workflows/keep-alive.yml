@@ -10,7 +10,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Supabase API
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          curl -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/" \
-          -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-          -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "ERRO: A secret SUPABASE_URL não foi encontrada ou está vazia."
+            exit 1
+          fi
+          
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "ERRO: A secret SUPABASE_ANON_KEY não foi encontrada ou está vazia."
+            exit 1
+          fi
+
+          echo "Enviando ping para o Supabase para manter o banco de dados ativo..."
+          curl -f -sS -X GET "${SUPABASE_URL}/rest/v1/produtos?select=id&limit=1" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}"
