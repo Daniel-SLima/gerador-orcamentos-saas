@@ -6,6 +6,7 @@ import { supabase } from "../lib/supabase";
 interface PerfilContextType {
   isAdmin: boolean;
   isVendedor: boolean;
+  isDesativado: boolean;
   userId: string | null;
   loadingPerfil: boolean;
 }
@@ -15,6 +16,7 @@ const PerfilContext = createContext<PerfilContextType | undefined>(undefined);
 export function PerfilUsuarioProvider({ children }: { children: React.ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isVendedor, setIsVendedor] = useState(true); // Padrão seguro
+  const [isDesativado, setIsDesativado] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [loadingPerfil, setLoadingPerfil] = useState(true);
 
@@ -43,6 +45,7 @@ export function PerfilUsuarioProvider({ children }: { children: React.ReactNode 
           const funcaoAjustada = perfil.funcao?.trim().toLowerCase();
           setIsAdmin(funcaoAjustada === "admin");
           setIsVendedor(funcaoAjustada === "vendedor");
+          setIsDesativado(funcaoAjustada === "desativado");
         }
       } catch (err) {
         console.error("Erro inesperado ao buscar perfil:", err);
@@ -58,6 +61,7 @@ export function PerfilUsuarioProvider({ children }: { children: React.ReactNode 
         setUserId(null);
         setIsAdmin(false);
         setIsVendedor(true); // reset fallback
+        setIsDesativado(false);
       }
     });
 
@@ -68,7 +72,7 @@ export function PerfilUsuarioProvider({ children }: { children: React.ReactNode 
   }, []);
 
   return (
-    <PerfilContext.Provider value={{ isAdmin, isVendedor, userId, loadingPerfil }}>
+    <PerfilContext.Provider value={{ isAdmin, isVendedor, isDesativado, userId, loadingPerfil }}>
       {children}
     </PerfilContext.Provider>
   );

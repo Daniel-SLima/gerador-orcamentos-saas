@@ -31,13 +31,25 @@ function LoginForm() {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       showToast(traduzirErro(error.message), "error");
-    } else {
-      showToast("Login realizado! Redirecionando...", "success");
-      router.push("/dashboard");
+    } else if (data?.user) {
+      // 🚀 Verifica se o usuário foi desativado
+      const { data: perfil } = await supabase
+        .from("perfis_usuarios")
+        .select("funcao")
+        .eq("user_id", data.user.id)
+        .single();
+        
+      if (perfil && perfil.funcao === "desativado") {
+        await supabase.auth.signOut();
+        showToast("Seu acesso foi desativado pelo administrador.", "error");
+      } else {
+        showToast("Login realizado! Redirecionando...", "success");
+        router.push("/dashboard");
+      }
     }
     setLoading(false);
   };
