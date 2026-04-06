@@ -85,6 +85,7 @@ function FormularioOrcamento() {
   const [modalAberto, setModalAberto] = useState(false);
   const [indexEditando, setIndexEditando] = useState<number | null>(null);
   const [itemEditando, setItemEditando] = useState<ItemCarrinho | null>(null);
+  const [listaItensAberta, setListaItensAberta] = useState(true);
 
   // 🚀 ESTADOS PARA ANEXOS DIVIDIDOS (OS QUE JÁ EXISTEM NO BANCO E OS NOVOS)
   const [anexosSalvos, setAnexosSalvos] = useState<AnexoBanco[]>([]);
@@ -584,13 +585,38 @@ function FormularioOrcamento() {
 
       {itens.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          {/* MOBILE VIEW MANTIDA INTACTA */}
+          {/* Cabeçalho recolhível da lista de itens */}
+          <button
+            type="button"
+            onClick={() => setListaItensAberta(!listaItensAberta)}
+            className="w-full flex justify-between items-center p-4 md:px-6 md:py-4 hover:bg-gray-50 transition-colors border-b border-gray-100"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+              </div>
+              <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider">
+                Itens Adicionados
+              </h2>
+              <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2.5 py-1 rounded-full">
+                {itens.length}
+              </span>
+            </div>
+            <svg
+              className={`w-5 h-5 text-gray-400 transition-transform duration-300 ${listaItensAberta ? 'rotate-180' : ''}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          <div className={`transition-all duration-300 ease-in-out overflow-hidden ${listaItensAberta ? 'max-h-[9999px] opacity-100' : 'max-h-0 opacity-0'}`}>
           <div className="block md:hidden divide-y divide-gray-100">
             {itens.map((item, index) => (
               <div key={index} className="p-4 bg-gray-50/30">
                 <div className="flex justify-between items-start mb-3">
-                  <div className="pr-4">
-                    <h3 className="font-bold text-gray-900">{String.fromCharCode(65 + index)} - {item.descricao}</h3>
+                  <div className="pr-4 min-w-0 flex-1">
+                    <h3 className="font-bold text-gray-900 break-all">{String.fromCharCode(65 + index)} - {item.descricao}</h3>
                     {item.medidas && <p className="text-xs text-gray-500 mt-1"><span className="font-semibold text-gray-400">Medidas:</span> {item.medidas}</p>}
                   </div>
                   <div className="flex gap-2">
@@ -665,100 +691,108 @@ function FormularioOrcamento() {
               </tbody>
             </table>
           </div>
-
-          <div className="bg-gray-50 p-6 border-t border-gray-200 flex flex-col md:flex-row justify-between items-start gap-6">
-            <div className="w-full md:w-1/2 space-y-4">
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Prazo</label>
-                  <textarea rows={2} value={prazo} onChange={e => setPrazo(e.target.value)} placeholder="Ex: 15 dias úteis" className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Forma de Pag.</label>
-                  <textarea rows={2} value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} placeholder="Ex: 50% entrada, 50% entrega" className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Validade Proposta</label>
-                  <textarea rows={2} value={validadeProposta} onChange={e => setValidadeProposta(e.target.value)} placeholder="Ex: 15 dias corridos" className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Observações e Condições</label>
-                <textarea value={observacoes} onChange={e => setObservacoes(e.target.value)} rows={3} className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
-              </div>
-
-              <div className="p-4 border-2 border-dashed border-gray-200 rounded-xl bg-white">
-                <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">📎 Anexos Opcionais</label>
-                {/* Aviso de limites e expiração (item 4) */}
-                <div className="flex items-start gap-1.5 mb-3">
-                  <span className="text-amber-500 text-xs mt-0.5">⏱️</span>
-                  <p className="text-[11px] text-amber-700 leading-snug">
-                    Válidos por <strong>15 dias</strong>. Limite: <strong>imagens até 10MB</strong> (JPG, PNG, WEBP) e <strong>PDFs até 20MB</strong>.
-                  </p>
-                </div>
-                <input type="file" ref={fileInputRef} multiple accept="image/*,.pdf" onChange={handleFileChange} className="hidden" />
-                <button
-                  onClick={(e) => { e.preventDefault(); fileInputRef.current?.click(); }}
-                  className="w-full py-2 bg-blue-50 text-blue-700 font-semibold rounded-lg hover:bg-blue-100 transition-colors text-sm border border-blue-100"
-                >
-                  + Adicionar Foto ou PDF
-                </button>
-
-                {/* Aviso de anexos que falharam no upload (item 4) */}
-                {anexosFalhos.length > 0 && (
-                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-xs font-bold text-red-700 mb-1">⚠️ Os seguintes arquivos não foram enviados:</p>
-                    <ul className="space-y-0.5">
-                      {anexosFalhos.map((nome) => (
-                        <li key={nome} className="text-xs text-red-600 font-medium">• {nome}</li>
-                      ))}
-                    </ul>
-                    <p className="text-[11px] text-red-500 mt-1.5">Você pode tentar adicioná-los novamente editando este orçamento.</p>
-                  </div>
-                )}
-
-                {anexosSalvos.length > 0 && (
-                  <ul className="mt-3 space-y-2 mb-3">
-                    {anexosSalvos.map((anexo) => (
-                      <li key={anexo.id} className="flex justify-between items-center text-sm bg-blue-50 p-2 rounded border border-blue-100">
-                        <a href={anexo.file_url} target="_blank" rel="noreferrer" className="truncate text-blue-700 hover:underline max-w-[200px]">
-                          {anexo.file_name}
-                        </a>
-                        <button type="button" onClick={() => removerAnexoSalvo(anexo.id)} className="text-red-500 hover:text-red-700 font-bold ml-2">X</button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {arquivosAnexos.length > 0 && (
-                  <ul className="mt-3 space-y-2">
-                    {arquivosAnexos.map((file, i) => (
-                      <li key={i} className="flex justify-between items-center text-sm bg-gray-50 p-2 rounded border border-gray-100">
-                        <span className="truncate text-gray-600 max-w-[200px]">{file.name}</span>
-                        <button type="button" onClick={() => removerAnexoNovo(i)} className="text-red-500 hover:text-red-700 font-bold ml-2">X</button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-            </div>
-
-            <div className="w-full md:w-auto bg-white p-5 rounded-xl border border-gray-200 shadow-sm min-w-[300px]">
-              <div className="flex justify-between items-center mb-2 text-gray-500"><span>Subtotal Bruto:</span><span>{formatarMoeda(totalBruto)}</span></div>
-              <div className="flex justify-between items-center mb-3 text-red-500 font-medium"><span>Descontos Aplicados:</span><span>- {formatarMoeda(totalDescontos)}</span></div>
-              <div className="border-t border-dashed border-gray-200 pt-3 flex justify-between items-center">
-                <span className="text-gray-800 font-bold uppercase tracking-wider text-sm">Valor Final:</span>
-                <span className="text-2xl font-black text-blue-600">{formatarMoeda(valorTotalOrcamento)}</span>
-              </div>
-            </div>
           </div>
         </div>
       )}
 
-      <div className="flex justify-end pt-4">
+      {/* ─── SEÇÃO 4: CONDIÇÕES COMERCIAIS (sempre visível) ─── */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="flex items-center gap-3 p-4 md:px-6 md:py-4 border-b border-gray-100">
+          <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
+            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+          </div>
+          <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Condições Comerciais</h2>
+        </div>
+
+        <div className="p-4 md:p-6 space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Prazo</label>
+              <textarea rows={2} value={prazo} onChange={e => setPrazo(e.target.value)} placeholder="Ex: 15 dias úteis" className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Forma de Pag.</label>
+              <textarea rows={2} value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} placeholder="Ex: 50% entrada, 50% entrega" className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Validade Proposta</label>
+              <textarea rows={2} value={validadeProposta} onChange={e => setValidadeProposta(e.target.value)} placeholder="Ex: 15 dias corridos" className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Observações e Condições</label>
+            <textarea value={observacoes} onChange={e => setObservacoes(e.target.value)} rows={3} className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
+          </div>
+
+          <div className="p-4 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">
+            <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">📎 Anexos Opcionais</label>
+            <div className="flex items-start gap-1.5 mb-3">
+              <span className="text-amber-500 text-xs mt-0.5">⏱️</span>
+              <p className="text-[11px] text-amber-700 leading-snug">
+                Válidos por <strong>15 dias</strong>. Limite: <strong>imagens até 10MB</strong> (JPG, PNG, WEBP) e <strong>PDFs até 20MB</strong>.
+              </p>
+            </div>
+            <input type="file" ref={fileInputRef} multiple accept="image/*,.pdf" onChange={handleFileChange} className="hidden" />
+            <button
+              onClick={(e) => { e.preventDefault(); fileInputRef.current?.click(); }}
+              className="w-full py-2 bg-blue-50 text-blue-700 font-semibold rounded-lg hover:bg-blue-100 transition-colors text-sm border border-blue-100"
+            >
+              + Adicionar Foto ou PDF
+            </button>
+
+            {anexosFalhos.length > 0 && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-xs font-bold text-red-700 mb-1">⚠️ Os seguintes arquivos não foram enviados:</p>
+                <ul className="space-y-0.5">
+                  {anexosFalhos.map((nome) => (
+                    <li key={nome} className="text-xs text-red-600 font-medium">• {nome}</li>
+                  ))}
+                </ul>
+                <p className="text-[11px] text-red-500 mt-1.5">Você pode tentar adicioná-los novamente editando este orçamento.</p>
+              </div>
+            )}
+
+            {anexosSalvos.length > 0 && (
+              <ul className="mt-3 space-y-2 mb-3">
+                {anexosSalvos.map((anexo) => (
+                  <li key={anexo.id} className="flex justify-between items-center text-sm bg-blue-50 p-2 rounded border border-blue-100">
+                    <a href={anexo.file_url} target="_blank" rel="noreferrer" className="truncate text-blue-700 hover:underline max-w-[200px]">
+                      {anexo.file_name}
+                    </a>
+                    <button type="button" onClick={() => removerAnexoSalvo(anexo.id)} className="text-red-500 hover:text-red-700 font-bold ml-2">X</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {arquivosAnexos.length > 0 && (
+              <ul className="mt-3 space-y-2">
+                {arquivosAnexos.map((file, i) => (
+                  <li key={i} className="flex justify-between items-center text-sm bg-gray-50 p-2 rounded border border-gray-100">
+                    <span className="truncate text-gray-600 max-w-[200px]">{file.name}</span>
+                    <button type="button" onClick={() => removerAnexoNovo(i)} className="text-red-500 hover:text-red-700 font-bold ml-2">X</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ─── VALOR FINAL (sempre visível no rodapé) ─── */}
+      {itens.length > 0 && (
+        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+          <div className="flex justify-between items-center mb-2 text-gray-500"><span>Subtotal Bruto:</span><span>{formatarMoeda(totalBruto)}</span></div>
+          <div className="flex justify-between items-center mb-3 text-red-500 font-medium"><span>Descontos Aplicados:</span><span>- {formatarMoeda(totalDescontos)}</span></div>
+          <div className="border-t border-dashed border-gray-200 pt-3 flex justify-between items-center">
+            <span className="text-gray-800 font-bold uppercase tracking-wider text-sm">Valor Final:</span>
+            <span className="text-2xl font-black text-blue-600">{formatarMoeda(valorTotalOrcamento)}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-end pt-2">
         <button
           onClick={gerarOuAtualizarOrcamento}
           disabled={salvando || itens.length === 0 || !clienteId || !dataEmissao}

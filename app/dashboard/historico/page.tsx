@@ -64,6 +64,12 @@ export default function HistoricoOrcamentosPage() {
   // 🚀 ESTADO DE LOADING AO EXCLUIR (item 6)
   const [deletandoId, setDeletandoId] = useState<string | null>(null);
 
+  // 🚀 ESTADOS DE PAGINAÇÃO
+  const [pagina, setPagina] = useState(0);
+  const [temMais, setTemMais] = useState(true);
+  const ITENS_POR_PAGINA = 30;
+  const [buscandoMais, setBuscandoMais] = useState(false);
+
   // 🚀 ESTADOS DO MODAL DE GERAR OP
   const [modalOpAberto, setModalOpAberto] = useState(false);
   const [modoEdicaoOp, setModoEdicaoOp] = useState(false); // true = apenas salvar, false = salvar e gerar PDF
@@ -78,11 +84,14 @@ export default function HistoricoOrcamentosPage() {
 
   useEffect(() => {
     if (!loadingPerfil) {
-      carregarOrcamentos();
+      carregarOrcamentos(0);
     }
   }, [loadingPerfil]);
 
-  const carregarOrcamentos = async () => {
+  const carregarOrcamentos = async (page = pagina) => {
+    if (page === 0) setLoading(true);
+    else setBuscandoMais(true);
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -99,22 +108,40 @@ export default function HistoricoOrcamentosPage() {
           contato_obra,
           clientes ( nome_razao_social ),
           vendedores ( nome )
-        `)
+        `, { count: 'exact' })
         .order("numero_orcamento", { ascending: false });
 
       if (!isAdmin) {
         query = query.eq("user_id", user.id);
       }
 
-      const { data, error } = await query;
+      const { data, count, error } = await query.range(page * ITENS_POR_PAGINA, (page + 1) * ITENS_POR_PAGINA - 1);
 
       if (error) throw error;
-      setOrcamentos(data as unknown as Orcamento[]);
+      
+      if (data) {
+        const novosOrcamentos = data as unknown as Orcamento[];
+        if (page === 0) {
+          setOrcamentos(novosOrcamentos);
+        } else {
+          setOrcamentos(prev => [...prev, ...novosOrcamentos]);
+        }
+        
+        if (count !== null) setTemMais((page + 1) * ITENS_POR_PAGINA < count);
+        else setTemMais(data.length === ITENS_POR_PAGINA);
+      }
     } catch (error) {
       console.error("Erro ao buscar histórico:", error);
     } finally {
       setLoading(false);
+      setBuscandoMais(false);
     }
+  };
+
+  const carregarMais = () => {
+    const novaPagina = pagina + 1;
+    setPagina(novaPagina);
+    carregarOrcamentos(novaPagina);
   };
 
   const deletarOrcamento = async (id: string) => {
@@ -424,13 +451,13 @@ export default function HistoricoOrcamentosPage() {
               {orcamentosFiltrados.map((orc) => (
                 <div key={orc.id} className="p-4 hover:bg-gray-50 transition-colors relative">
                   <div className="flex justify-between items-start mb-2">
-                    <div>
+                    <div className="min-w-0 pr-4 flex-1">
                       <h3 className="font-bold text-gray-900 text-lg">#{String(orc.numero_orcamento).padStart(5, '0')}</h3>
-                      <p className="text-sm font-semibold text-gray-700 mt-0.5">
+                      <p className="text-sm font-semibold text-gray-700 mt-0.5 break-all">
                         {Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : orc.clientes?.nome_razao_social}
                       </p>
                       {isAdmin && (
-                        <p className="text-[11px] text-gray-500 mt-1 uppercase font-bold tracking-wider">
+                        <p className="text-[11px] text-gray-500 mt-1 uppercase font-bold tracking-wider break-all">
                           Vendedor: {Array.isArray(orc.vendedores) ? orc.vendedores[0]?.nome : orc.vendedores?.nome || "Indefinido"}
                         </p>
                       )}
@@ -598,7 +625,24 @@ export default function HistoricoOrcamentosPage() {
                 </tbody>
               </table>
             </div>
-
+            
+            {/* BOTÃO CARREGAR MAIS (Abaixo de ambas as tabelas) */}
+            {temMais && (
+              <div className="p-6 flex justify-center border-t border-gray-100">
+                <button 
+                  onClick={carregarMais} 
+                  disabled={buscandoMais}
+                  className="px-6 py-2.5 bg-white border border-gray-200 text-blue-600 font-medium rounded-lg hover:bg-blue-50 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
+                >
+                  {buscandoMais ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      Carregando...
+                    </>
+                  ) : "Carregar Mais Orçamentos"}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

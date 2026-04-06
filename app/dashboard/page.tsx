@@ -38,6 +38,7 @@ export default function DashboardPage() {
   // 🚀 ESTADOS RANKINGS (NOVO)
   const [rankingVendedores, setRankingVendedores] = useState<{nome: string, total: number, qtd: number}[]>([]);
   const [rankingClientes, setRankingClientes] = useState<{nome: string, total: number, qtd: number}[]>([]);
+  const [graficoMeses, setGraficoMeses] = useState<{mes: string, qtd: number, aprovados: number}[]>([]);
 
   // 🚀 ESTADOS DOS FILTROS
   const [tipoFiltro, setTipoFiltro] = useState("todos"); // 'todos', 'mes', 'dia'
@@ -120,6 +121,18 @@ export default function DashboardPage() {
 
     // Atualiza a tabela rápida com os 5 mais recentes do período filtrado
     setUltimosOrcamentos(orcamentosFiltrados.slice(0, 5));
+
+    // 📊 GRÁFICO: Últimos 6 meses (sempre usa todos os dados, sem filtro de período)
+    const agora = new Date();
+    const mesesData: {mes: string, qtd: number, aprovados: number}[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(agora.getFullYear(), agora.getMonth() - i, 1);
+      const chave = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+      const orcsMes = todosOrcamentosBrutos.filter(o => (o.data_emissao || o.created_at || '').slice(0, 7) === chave);
+      mesesData.push({ mes: label, qtd: orcsMes.length, aprovados: orcsMes.filter(o => o.status === 'Aprovado').length });
+    }
+    setGraficoMeses(mesesData);
 
   }, [tipoFiltro, mesSelecionado, diaSelecionado, todosOrcamentosBrutos]);
 
@@ -379,6 +392,44 @@ export default function DashboardPage() {
                   <span className="text-sm font-medium">Ver todos</span>
                 </Link>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📊 GRÁFICO DE ORÇAMENTOS POR MÊS (CSS puro, sem bibliotecas) */}
+      {graficoMeses.length > 0 && graficoMeses.some(m => m.qtd > 0) && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-8">
+          <div className="p-5 border-b border-gray-50 flex items-center gap-3">
+            <div className="bg-indigo-50 text-indigo-600 p-2 rounded-lg">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900 leading-tight">Orçamentos por Mês</h3>
+              <p className="text-xs text-gray-500">Últimos 6 meses</p>
+            </div>
+          </div>
+          <div className="p-5">
+            {(() => {
+              const maxQtd = Math.max(...graficoMeses.map(m => m.qtd), 1);
+              return (
+                <div className="flex items-end justify-around gap-2 h-40">
+                  {graficoMeses.map((m, i) => (
+                    <div key={i} className="flex flex-col items-center gap-1 flex-1">
+                      <span className="text-xs font-bold text-gray-700">{m.qtd}</span>
+                      <div className="w-full flex flex-col-reverse rounded-t-lg overflow-hidden" style={{ height: `${Math.max((m.qtd / maxQtd) * 112, m.qtd > 0 ? 8 : 0)}px` }}>
+                        <div className="bg-indigo-500 w-full" style={{ height: `${m.aprovados > 0 ? (m.aprovados / m.qtd) * 100 : 0}%`, minHeight: m.aprovados > 0 ? '4px' : '0' }} title={`${m.aprovados} aprovado(s)`} />
+                        <div className="bg-indigo-200 w-full flex-1" title={`${m.qtd - m.aprovados} outro(s)`} />
+                      </div>
+                      <span className="text-[10px] text-gray-500 font-medium capitalize">{m.mes}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            <div className="flex items-center gap-4 mt-4 pt-3 border-t border-gray-50 justify-center">
+              <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-indigo-500"></div><span className="text-xs text-gray-500">Aprovados</span></div>
+              <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-indigo-200"></div><span className="text-xs text-gray-500">Outros status</span></div>
             </div>
           </div>
         </div>

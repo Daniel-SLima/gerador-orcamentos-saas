@@ -429,11 +429,11 @@ export default function PerfilEmpresa() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
                 {vendedores.map((vendedor) => (
                   <div key={vendedor.id} className="border border-gray-200 rounded-lg p-4 flex justify-between items-center bg-white shadow-sm relative">
-                    <div>
-                      <p className="font-bold text-gray-800">{vendedor.nome}</p>
+                    <div className="min-w-0 pr-4 flex-1">
+                      <p className="font-bold text-gray-800 break-all">{vendedor.nome}</p>
                       <p className="text-sm text-gray-500 font-medium">{vendedor.telefone || "Sem telefone"}</p>
                       {vendedor.email && (
-                        <p className="text-xs text-blue-600 mt-0.5">{vendedor.email}</p>
+                        <p className="text-xs text-blue-600 mt-0.5 break-all">{vendedor.email}</p>
                       )}
                     </div>
                     <div>

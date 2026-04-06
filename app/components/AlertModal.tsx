@@ -91,7 +91,7 @@ export function AlertModal({ open, type = "info", title, message, onClose }: Ale
             {cfg.icon}
           </div>
           <h3 className="text-lg font-bold text-gray-900 mb-2">{title ?? cfg.title}</h3>
-          <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{message}</p>
+          <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed break-words">{message}</p>
         </div>
         <div className="px-6 pb-6">
           <button
@@ -131,7 +131,7 @@ export function ConfirmModal({
             {cfg.icon}
           </div>
           <h3 className="text-lg font-bold text-gray-900 mb-2">{title ?? cfg.title}</h3>
-          <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{message}</p>
+          <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed break-words">{message}</p>
         </div>
         <div className="px-6 pb-6 flex gap-3">
           <button

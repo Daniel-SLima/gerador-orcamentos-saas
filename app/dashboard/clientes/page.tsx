@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { AlertModal, ConfirmModal, useAlert, useConfirm } from "../../components/AlertModal";
+import { useToast } from "../../components/Toast";
 
 interface Cliente {
   id: string;
@@ -42,8 +43,10 @@ export default function ClientesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [clienteEditandoId, setClienteEditandoId] = useState<string | null>(null);
+  const [formularioAberto, setFormularioAberto] = useState(false);
   const { showAlert, alertProps } = useAlert();
   const { showConfirm, confirmProps } = useConfirm();
+  const { showToast } = useToast();
 
   const [nomeRazaoSocial, setNomeRazaoSocial] = useState("");
   const [cpfCnpj, setCpfCnpj] = useState("");
@@ -55,11 +58,17 @@ export default function ClientesPage() {
   const [uf, setUf] = useState("");
   const [cidade, setCidade] = useState("");
   const [bairro, setBairro] = useState("");
-  const [ruaNumero, setRuaNumero] = useState("");
+  const [rua, setRua] = useState("");
+  const [numero, setNumero] = useState("");
   
-  const [message, setMessage] = useState("");
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
   const [termoBusca, setTermoBusca] = useState("");
+  
+  // PAGINAÇÃO E BUSCA REMOTA
+  const [pagina, setPagina] = useState(0);
+  const [temMais, setTemMais] = useState(true);
+  const ITENS_POR_PAGINA = 20;
+  const [buscando, setBuscando] = useState(false);
 
   // ESTADOS DA API DO IBGE
   const [estados, setEstados] = useState<EstadoIBGE[]>([]);
@@ -67,8 +76,17 @@ export default function ClientesPage() {
   const [carregandoCidades, setCarregandoCidades] = useState(false);
   const [buscandoCep, setBuscandoCep] = useState(false);
 
+  // Debounce para busca remota (busca no Supabase ao invés de filtrar na memória)
   useEffect(() => {
-    carregarClientes();
+    const timer = setTimeout(() => {
+      setPagina(0); // Sempre que busca mudar, reseta a paginação
+      carregarClientes(0, termoBusca);
+    }, 500); // aguarda meio segundo após parar de digitar
+    
+    return () => clearTimeout(timer);
+  }, [termoBusca]);
+
+  useEffect(() => {
     carregarEstados();
   }, []);
 
@@ -102,74 +120,105 @@ export default function ClientesPage() {
     const cepLimpo = cepDigitado.replace(/\D/g, '');
     setCep(cepLimpo);
 
-    if (cepLimpo.length !== 8) return; // Só busca quando tiver 8 números
+    if (cepLimpo.length !== 8) return;
 
     setBuscandoCep(true);
-    setMessage("");
 
     try {
       const response = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
       const data = await response.json();
 
       if (data.erro) {
-        setMessage("❌ CEP não encontrado.");
+        showToast("CEP não encontrado.", "error");
         return;
       }
 
       setUf(data.uf);
       setBairro(data.bairro);
+      setRua(data.logradouro || ""); 
+      setNumero("");
       
-      // A rua já vem com o nome, basta o usuário colocar o número depois
-      setRuaNumero(data.logradouro ? `${data.logradouro}, ` : ""); 
-      
-      // A cidade precisa de um pequeno "delay" porque depende do UF ser carregado pelo IBGE primeiro
       setTimeout(() => {
         setCidade(data.localidade);
       }, 500);
 
     } catch (error) {
-      setMessage("❌ Erro ao buscar CEP.");
+      showToast("Erro ao buscar CEP.", "error");
     } finally {
       setBuscandoCep(false);
     }
   };
 
-  const carregarClientes = async () => {
+  const carregarClientes = async (page = pagina, busca = termoBusca) => {
+    if (page === 0) setLoading(true);
+    else setBuscando(true);
+    
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase.from("clientes").select("*").order("created_at", { ascending: false });
+      let query = supabase.from("clientes").select("*", { count: 'exact' });
+
+      if (busca.trim()) {
+        const t = busca.trim();
+        query = query.or(`nome_razao_social.ilike.%${t}%,cpf_cnpj.ilike.%${t}%,contato_nome.ilike.%${t}%,telefone.ilike.%${t}%`);
+      }
+
+      const { data, count, error } = await query
+        .order("created_at", { ascending: false })
+        .range(page * ITENS_POR_PAGINA, (page + 1) * ITENS_POR_PAGINA - 1);
+
       if (error) throw error;
-      if (data) setClientes(data);
+      
+      if (data) {
+        if (page === 0) {
+          setClientes(data);
+        } else {
+          setClientes(prev => [...prev, ...data]);
+        }
+        
+        // Verifica se ainda tem mais itens para carregar
+        if (count !== null) {
+          setTemMais((page + 1) * ITENS_POR_PAGINA < count);
+        } else {
+          setTemMais(data.length === ITENS_POR_PAGINA);
+        }
+      }
     } catch (error) {
       console.error("Erro:", error);
     } finally {
       setLoading(false);
+      setBuscando(false);
     }
+  };
+
+  const carregarMais = () => {
+    const novaPagina = pagina + 1;
+    setPagina(novaPagina);
+    carregarClientes(novaPagina, termoBusca);
   };
 
   const salvarCliente = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    setMessage("");
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Sessão expirada.");
 
-      const enderecoConcatenado = `${ruaNumero}, ${bairro} - ${cidade}/${uf}`;
+      const ruaNumeroCombinado = numero.trim() ? `${rua.trim()}, ${numero.trim()}` : rua.trim();
+      const enderecoConcatenado = `${ruaNumeroCombinado}, ${bairro} - ${cidade}/${uf}`;
 
       const dadosParaSalvar = {
         nome_razao_social: nomeRazaoSocial, 
         cpf_cnpj: cpfCnpj, 
         contato_nome: contatoNome, 
         telefone: telefone,
-        cep: cep, // Salvando o CEP no banco
+        cep: cep,
         uf: uf,
         cidade: cidade,
         bairro: bairro,
-        rua_numero: ruaNumero,
+        rua_numero: ruaNumeroCombinado,
         endereco: enderecoConcatenado, 
         user_id: user.id 
       };
@@ -177,17 +226,18 @@ export default function ClientesPage() {
       if (clienteEditandoId) {
         const { error } = await supabase.from("clientes").update(dadosParaSalvar).eq("id", clienteEditandoId);
         if (error) throw error;
-        setMessage("✅ Cliente atualizado com sucesso!");
+        showToast("Cliente atualizado com sucesso!", "success");
       } else {
         const { error } = await supabase.from("clientes").insert([dadosParaSalvar]);
         if (error) throw error;
-        setMessage("✅ Cliente cadastrado com sucesso!");
+        showToast("Cliente cadastrado com sucesso!", "success");
       }
       
       limparFormulario();
-      carregarClientes();
+      setPagina(0);
+      carregarClientes(0, termoBusca);
     } catch (error) {
-      setMessage("❌ Erro ao salvar: " + (error as Error).message);
+      showToast("Erro ao salvar: " + (error as Error).message, "error");
     } finally {
       setSaving(false);
     }
@@ -203,9 +253,15 @@ export default function ClientesPage() {
     setUf(cliente.uf || "");
     setCidade(cliente.cidade || "");
     setBairro(cliente.bairro || "");
-    setRuaNumero(cliente.rua_numero || "");
-    setMessage("");
+    
+    // Divide "Rua, Número" nos campos visuais da interface
+    const rNum = cliente.rua_numero || "";
+    const pRua = rNum.split(",");
+    setRua(pRua[0]?.trim() || "");
+    setNumero(pRua.slice(1).join(",").trim() || "");
+    
     setMenuAbertoId(null);
+    setFormularioAberto(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -219,7 +275,9 @@ export default function ClientesPage() {
     setUf("");
     setCidade("");
     setBairro("");
-    setRuaNumero("");
+    setRua("");
+    setNumero("");
+    setFormularioAberto(false); // fecha ao cancelar
   };
 
   const deletarCliente = async (id: string) => {
@@ -246,31 +304,56 @@ export default function ClientesPage() {
     else setMenuAbertoId(id);
   };
 
-  const clientesFiltrados = clientes.filter((cliente) => {
-    const busca = termoBusca.toLowerCase();
-    return (
-      cliente.nome_razao_social?.toLowerCase().includes(busca) ||
-      cliente.cpf_cnpj?.toLowerCase().includes(busca) ||
-      cliente.contato_nome?.toLowerCase().includes(busca) ||
-      cliente.telefone?.toLowerCase().includes(busca)
-    );
-  });
+  // Removido o filtro local pois agora é do lado do servidor (Supabase)
+  const clientesFiltrados = clientes;
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto" onClick={() => menuAbertoId && setMenuAbertoId(null)}>
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Meus Clientes</h1>
-      
-      <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
-        <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
-          <h2 className="text-lg font-semibold text-gray-800">
-            {clienteEditandoId ? "✏️ Editando Cliente" : "Novo Cliente"}
-          </h2>
-          {clienteEditandoId && (
-            <button onClick={limparFormulario} className="text-sm font-medium text-red-500 hover:text-red-700 bg-red-50 px-3 py-1.5 rounded-md transition-colors">
-              Cancelar edição
-            </button>
-          )}
-        </div>
+
+      {/* FORMULÁRIO RECOLHÍVEL */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-8 overflow-hidden">
+        {/* Cabeçalho clicável */}
+        <button
+          type="button"
+          onClick={() => setFormularioAberto(!formularioAberto)}
+          className="w-full flex justify-between items-center p-4 md:p-6 hover:bg-gray-50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${clienteEditandoId ? 'bg-amber-100' : 'bg-blue-50'}`}>
+              <svg className={`w-5 h-5 ${clienteEditandoId ? 'text-amber-600' : 'text-blue-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+            </div>
+            <div className="text-left">
+              <h2 className="text-base font-semibold text-gray-800 leading-tight">
+                {clienteEditandoId ? "✏️ Editando Cliente" : "Novo Cliente"}
+              </h2>
+              {!formularioAberto && !clienteEditandoId && (
+                <p className="text-xs text-gray-400 mt-0.5">Clique para expandir o formulário</p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {clienteEditandoId && (
+              <span
+                role="button"
+                onClick={(e) => { e.stopPropagation(); limparFormulario(); }}
+                className="text-xs font-medium text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-md transition-colors"
+              >
+                Cancelar edição
+              </span>
+            )}
+            <svg
+              className={`w-5 h-5 text-gray-400 transition-transform duration-300 ${formularioAberto ? 'rotate-180' : ''}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </button>
+
+        {/* Conteúdo recolhível */}
+        <div className={`transition-all duration-300 ease-in-out overflow-hidden ${formularioAberto ? 'max-h-[9999px] opacity-100' : 'max-h-0 opacity-0'}`}>
+          <div className="p-4 md:p-6 pt-0 border-t border-gray-100">
 
         <form onSubmit={salvarCliente} className="grid grid-cols-1 md:grid-cols-12 gap-5">
           <div className="md:col-span-12 lg:col-span-4">
@@ -324,13 +407,17 @@ export default function ClientesPage() {
           </div>
           
           <div className="md:col-span-12 grid grid-cols-1 md:grid-cols-12 gap-5 mt-[-10px]">
-            <div className="md:col-span-5">
+            <div className="md:col-span-4">
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Bairro</label>
               <input type="text" value={bairro} onChange={(e) => setBairro(e.target.value)} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Centro" />
             </div>
-            <div className="md:col-span-7">
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Rua e Número</label>
-              <input type="text" value={ruaNumero} onChange={(e) => setRuaNumero(e.target.value)} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Rua das Flores, 123" />
+            <div className="md:col-span-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Logradouro / Rua</label>
+              <input type="text" value={rua} onChange={(e) => setRua(e.target.value)} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Ex: Rua das Flores" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Número</label>
+              <input type="text" value={numero} onChange={(e) => setNumero(e.target.value)} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Ex: 123" />
             </div>
           </div>
 
@@ -340,12 +427,8 @@ export default function ClientesPage() {
             </button>
           </div>
         </form>
-        
-        {message && (
-          <div className={`mt-5 p-3 rounded-lg text-sm border ${message.includes("Erro") || message.includes("não encontrado") ? "bg-red-50 text-red-600 border-red-100" : "bg-green-50 text-green-700 border-green-100"}`}>
-            {message}
           </div>
-        )}
+        </div>
       </div>
 
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row items-center gap-4">
@@ -368,7 +451,7 @@ export default function ClientesPage() {
               {clientesFiltrados.map((cliente) => (
                 <div key={cliente.id} className="p-4 hover:bg-gray-50 transition-colors relative">
                   <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-semibold text-gray-900 pr-8">{cliente.nome_razao_social}</h3>
+                    <h3 className="font-semibold text-gray-900 pr-8 break-all min-w-0 flex-1">{cliente.nome_razao_social}</h3>
                     <button onClick={(e) => { e.stopPropagation(); toggleMenu(cliente.id); }} className="p-1 -mr-2 -mt-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors focus:outline-none">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
                     </button>
@@ -425,6 +508,24 @@ export default function ClientesPage() {
                 </tbody>
               </table>
             </div>
+            
+            {/* BOTÃO CARREGAR MAIS (Abaixo de ambas as visualizações) */}
+            {temMais && (
+              <div className="p-6 flex justify-center border-t border-gray-100">
+                <button 
+                  onClick={carregarMais} 
+                  disabled={buscando}
+                  className="px-6 py-2.5 bg-white border border-gray-200 text-blue-600 font-medium rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm flex items-center gap-2"
+                >
+                  {buscando ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      Carregando...
+                    </>
+                  ) : "Carregar Mais Clientes"}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

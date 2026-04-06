@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../lib/supabase";
+import Image from "next/image";
 import { comprimirImagem } from "../../lib/comprimirImagem";
 import { uploadParaCloudinary, deletarDoCloudinary } from "../../lib/uploadCloudinary";
 import { AlertModal, ConfirmModal, useAlert, useConfirm } from "../../components/AlertModal";
+import { useToast } from "../../components/Toast";
 
 // Bucket legado — ainda usado para deletar imagens antigas do Supabase
 const BUCKET_LEGADO = "arquivos";
@@ -41,8 +43,16 @@ export default function ProdutosPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [produtoEditandoId, setProdutoEditandoId] = useState<string | null>(null);
+  const [formularioAberto, setFormularioAberto] = useState(false);
   const { showAlert, alertProps } = useAlert();
   const { showConfirm, confirmProps } = useConfirm();
+  const { showToast } = useToast();
+
+  // Paginação e Busca Remota
+  const [pagina, setPagina] = useState(0);
+  const [temMais, setTemMais] = useState(true);
+  const [buscandoMais, setBuscandoMais] = useState(false);
+  const ITENS_POR_PAGINA = 20;
 
   // Modal de vínculos com orçamentos
   const [modalVinculos, setModalVinculos] = useState<{
@@ -60,6 +70,16 @@ export default function ProdutosPage() {
   const [valorUnitario, setValorUnitario] = useState("0");
   const [imagemUrl, setImagemUrl] = useState("");
   const [message, setMessage] = useState("");
+  
+  // Estado para armazenar a mensagem (será exibida via Toast em seguida):
+  const exibirMensagem = (msg: string) => {
+    setMessage(msg); // compat. legado
+    if (msg.includes("Erro") || msg.includes("erro")) {
+      showToast(msg.replace("\u274c ", "").replace("\u26a0️ ", ""), "error");
+    } else if (msg) {
+      showToast(msg.replace("\u2705 ", "").replace("\u2b06️ ", ""), "success");
+    }
+  };
 
   const [arquivoSelecionado, setArquivoSelecionado] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -115,27 +135,52 @@ export default function ProdutosPage() {
 
   const produtosInativos = PRAZO_ALERTA_DIAS ? produtos.filter(estaInativo) : [];
 
+  // Debounce: busca no Supabase ao invés de filtrar na memória
   useEffect(() => {
-    carregarProdutos();
-  }, []);
+    const timer = setTimeout(() => {
+      setPagina(0);
+      carregarProdutos(0, termoBusca);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [termoBusca]);
 
-  const carregarProdutos = async () => {
+  const carregarProdutos = async (page = pagina, busca = termoBusca) => {
+    if (page === 0) setLoading(true);
+    else setBuscandoMais(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
-        .from("produtos")
-        .select("*")
-        .order("created_at", { ascending: false });
+      let query = supabase.from("produtos").select("*", { count: 'exact' });
+
+      if (busca.trim()) {
+        const t = busca.trim();
+        query = query.or(`descricao.ilike.%${t}%,codigo_item.ilike.%${t}%`);
+      }
+
+      const { data, count, error } = await query
+        .order("created_at", { ascending: false })
+        .range(page * ITENS_POR_PAGINA, (page + 1) * ITENS_POR_PAGINA - 1);
 
       if (error) throw error;
-      if (data) setProdutos(data);
+      if (data) {
+        if (page === 0) setProdutos(data);
+        else setProdutos(prev => [...prev, ...data]);
+        if (count !== null) setTemMais((page + 1) * ITENS_POR_PAGINA < count);
+        else setTemMais(data.length === ITENS_POR_PAGINA);
+      }
     } catch (error) {
       console.error("Erro ao buscar produtos:", error);
     } finally {
       setLoading(false);
+      setBuscandoMais(false);
     }
+  };
+
+  const carregarMais = () => {
+    const novaPagina = pagina + 1;
+    setPagina(novaPagina);
+    carregarProdutos(novaPagina, termoBusca);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -164,6 +209,8 @@ export default function ProdutosPage() {
     setArquivoSelecionado(null);
     setPreviewUrl(null);
     setRemoverFotoAntiga(false);
+    setFormularioAberto(false);
+    setMessage("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -218,29 +265,26 @@ export default function ProdutosPage() {
       };
 
       if (produtoEditandoId) {
-        setMessage("💾 Atualizando produto...");
         const { error } = await supabase
           .from("produtos")
           .update(dadosParaSalvar)
           .eq("id", produtoEditandoId);
-
         if (error) throw error;
-        setMessage("✅ Produto atualizado com sucesso!");
+        showToast("Produto atualizado com sucesso!", "success");
       } else {
-        setMessage("💾 Salvando novo produto...");
         const { error } = await supabase
           .from("produtos")
           .insert([dadosParaSalvar]);
-
         if (error) throw error;
-        setMessage("✅ Produto cadastrado com sucesso!");
+        showToast("Produto cadastrado com sucesso!", "success");
       }
 
       limparFormulario();
-      carregarProdutos();
+      setPagina(0);
+      carregarProdutos(0, termoBusca);
     } catch (error) {
       console.error(error);
-      setMessage("❌ Erro ao salvar: " + (error as Error).message);
+      showToast("Erro ao salvar: " + (error as Error).message, "error");
     } finally {
       setSaving(false);
     }
@@ -258,6 +302,7 @@ export default function ProdutosPage() {
     setRemoverFotoAntiga(false);
     setMessage("");
     setMenuAbertoId(null);
+    setFormularioAberto(true); // abre o formulário ao editar
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -351,31 +396,56 @@ export default function ProdutosPage() {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
   };
 
-  // 🚀 LÓGICA DE FILTRAGEM INTELIGENTE (Descrição ou Código)
-  const produtosFiltrados = produtos.filter((produto) => {
-    const busca = termoBusca.toLowerCase();
-    return (
-      produto.descricao?.toLowerCase().includes(busca) ||
-      produto.codigo_item?.toLowerCase().includes(busca)
-    );
-  });
+  // A busca agora é remota (Supabase) — sem filtro local
+  const produtosFiltrados = produtos;
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto" onClick={() => menuAbertoId && setMenuAbertoId(null)}>
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Meus Produtos</h1>
 
-      {/* Formulário */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
-        <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
-          <h2 className="text-lg font-semibold text-gray-800">
-            {produtoEditandoId ? "✏️ Editando Produto" : "Novo Produto"}
-          </h2>
-          {produtoEditandoId && (
-            <button onClick={limparFormulario} className="text-sm font-medium text-red-500 hover:text-red-700 bg-red-50 px-3 py-1.5 rounded-md transition-colors">
-              Cancelar edição
-            </button>
-          )}
-        </div>
+      {/* FORMULÁRIO RECOLHÍVEL */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-8 overflow-hidden">
+        {/* Cabeçalho clicável */}
+        <button
+          type="button"
+          onClick={() => setFormularioAberto(!formularioAberto)}
+          className="w-full flex justify-between items-center p-4 md:p-6 hover:bg-gray-50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${produtoEditandoId ? 'bg-amber-100' : 'bg-blue-50'}`}>
+              <svg className={`w-5 h-5 ${produtoEditandoId ? 'text-amber-600' : 'text-blue-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+            </div>
+            <div className="text-left">
+              <h2 className="text-base font-semibold text-gray-800 leading-tight">
+                {produtoEditandoId ? "✏️ Editando Produto" : "Novo Produto"}
+              </h2>
+              {!formularioAberto && !produtoEditandoId && (
+                <p className="text-xs text-gray-400 mt-0.5">Clique para expandir o formulário</p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {produtoEditandoId && (
+              <span
+                role="button"
+                onClick={(e) => { e.stopPropagation(); limparFormulario(); }}
+                className="text-xs font-medium text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-md transition-colors"
+              >
+                Cancelar edição
+              </span>
+            )}
+            <svg
+              className={`w-5 h-5 text-gray-400 transition-transform duration-300 ${formularioAberto ? 'rotate-180' : ''}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </button>
+
+        {/* Conteúdo recolhível */}
+        <div className={`transition-all duration-300 ease-in-out overflow-hidden ${formularioAberto ? 'max-h-[9999px] opacity-100' : 'max-h-0 opacity-0'}`}>
+          <div className="p-4 md:p-6 pt-0 border-t border-gray-100">
 
         <form onSubmit={salvarProduto} className="flex flex-col md:flex-row gap-8">
           <div className="w-full md:w-1/3 lg:w-1/4 flex flex-col items-center justify-start p-4 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50 text-center">
@@ -438,6 +508,8 @@ export default function ProdutosPage() {
             {message}
           </div>
         )}
+          </div>
+        </div>
       </div>
 
       {/* 🚀 BARRA DE BUSCA RÁPIDA */}
@@ -523,15 +595,14 @@ export default function ProdutosPage() {
                 <div key={produto.id} className="p-4 flex gap-4 hover:bg-gray-50 transition-colors">
                   <div className="shrink-0">
                     {produto.imagem_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={produto.imagem_url} alt="Produto" className="w-16 h-16 object-contain bg-white rounded-lg border border-gray-200" />
+                      <Image src={produto.imagem_url} alt="Produto" width={64} height={64} unoptimized={eImagemDoSupabase(produto.imagem_url)} className="w-16 h-16 object-contain bg-white rounded-lg border border-gray-200" />
                     ) : (
                       <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200 text-gray-400 text-xs text-center">Sem Foto</div>
                     )}
                   </div>
-                  <div className="flex-1 relative">
+                  <div className="flex-1 relative min-w-0">
                     <div className="flex justify-between items-start">
-                      <h3 className="font-semibold text-gray-900 leading-tight mb-1 pr-6">{produto.descricao}</h3>
+                      <h3 className="font-semibold text-gray-900 leading-tight mb-1 pr-6 flex-1 min-w-0 break-all">{produto.descricao}</h3>
 
                       <button onClick={(e) => { e.stopPropagation(); toggleMenu(produto.id); }} className="p-1 -mr-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors focus:outline-none">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
@@ -578,8 +649,7 @@ export default function ProdutosPage() {
                     <tr key={produto.id} className="hover:bg-gray-50/50 transition-colors">
                       <td className="p-4 flex justify-center">
                         {produto.imagem_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={produto.imagem_url} alt="Produto" className="w-12 h-12 object-contain bg-white rounded-md border border-gray-200" />
+                          <Image src={produto.imagem_url} alt="Produto" width={48} height={48} unoptimized={eImagemDoSupabase(produto.imagem_url)} className="w-12 h-12 object-contain bg-white rounded-md border border-gray-200" />
                         ) : (
                           <div className="w-12 h-12 bg-gray-100 rounded-md border border-gray-200 flex items-center justify-center text-gray-400">
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
@@ -638,8 +708,8 @@ export default function ProdutosPage() {
 
             {/* Body */}
             <div className="px-6 py-4">
-              <p className="text-sm text-gray-600 mb-1">
-                O produto <strong className="text-gray-900">&ldquo;{modalVinculos.produto.descricao}&rdquo;</strong> está presente nos seguintes orçamentos:
+              <p className="text-sm text-gray-600 mb-1 break-words">
+                O produto <strong className="text-gray-900 break-words">&ldquo;{modalVinculos.produto.descricao}&rdquo;</strong> está presente nos seguintes orçamentos:
               </p>
               <p className="text-xs text-gray-400 mb-4">Os dados já salvos nesses orçamentos <strong>não serão apagados</strong> — apenas o produto será removido do catálogo.</p>
 
