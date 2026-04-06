@@ -3,13 +3,15 @@
 import { useState } from "react";
 import { supabase } from "./lib/supabase";
 import { useRouter } from "next/navigation";
+import { ToastProvider, useToast } from "./components/Toast";
 
-export default function Login() {
+// Componente interno que usa o hook useToast (precisa estar dentro do Provider)
+function LoginForm() {
   const router = useRouter();
+  const { showToast } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
 
   // 🚀 FUNÇÃO PARA TRADUZIR OS ERROS DO SUPABASE
   const traduzirErro = (mensagem: string) => {
@@ -22,21 +24,19 @@ export default function Login() {
     if (mensagem.includes("User already registered")) {
       return "Este e-mail já está cadastrado.";
     }
-    return "Ocorreu um erro inesperado. Tente novamente."; // Erro genérico de segurança
+    return "Ocorreu um erro inesperado. Tente novamente.";
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setMessage("");
 
     const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      // Usando o tradutor aqui
-      setMessage("Erro: " + traduzirErro(error.message));
+      showToast(traduzirErro(error.message), "error");
     } else {
-      setMessage("Login realizado com sucesso! Redirecionando...");
+      showToast("Login realizado! Redirecionando...", "success");
       router.push("/dashboard");
     }
     setLoading(false);
@@ -44,15 +44,13 @@ export default function Login() {
 
   const handleSignUp = async () => {
     setLoading(true);
-    setMessage("");
 
     const { error } = await supabase.auth.signUp({ email, password });
 
     if (error) {
-      // Usando o tradutor aqui também
-      setMessage("Erro: " + traduzirErro(error.message));
+      showToast(traduzirErro(error.message), "error");
     } else {
-      setMessage("Conta criada! Você já pode fazer login.");
+      showToast("Conta criada! Você já pode fazer login.", "success");
     }
     setLoading(false);
   };
@@ -60,14 +58,14 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 border border-gray-100">
-        
+
         {/* LOGO */}
         <div className="text-center mb-8 flex flex-col items-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img 
-            src="/Logo_Sane_512x512.png" 
-            alt="SANE Sistemas" 
-            className="h-16 w-auto object-contain mb-2" 
+          <img
+            src="/Logo_Sane_512x512.png"
+            alt="SANE Sistemas"
+            className="h-16 w-auto object-contain mb-2"
           />
           <p className="text-sm text-gray-500 mt-2">Acesse sua conta para continuar</p>
         </div>
@@ -97,12 +95,6 @@ export default function Login() {
             />
           </div>
 
-          {message && (
-            <div className={`p-3 rounded-lg text-sm font-medium border ${message.includes("Erro") ? "bg-red-50 text-red-600 border-red-100" : "bg-green-50 text-green-700 border-green-100"}`}>
-              {message}
-            </div>
-          )}
-
           <button
             type="submit"
             disabled={loading}
@@ -122,5 +114,14 @@ export default function Login() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Exporta o page com o ToastProvider local (não afeta o layout do dashboard)
+export default function Login() {
+  return (
+    <ToastProvider>
+      <LoginForm />
+    </ToastProvider>
   );
 }
