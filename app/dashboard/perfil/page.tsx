@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../lib/supabase";
 import { uploadParaCloudinary, deletarDoCloudinary } from "../../lib/uploadCloudinary";
 import { AlertModal, ConfirmModal, useAlert, useConfirm } from "../../components/AlertModal";
+import { usePerfilUsuario } from "../../hooks/usePerfilUsuario";
+import { useRouter } from "next/navigation";
 
 // Bucket legado — usado apenas para deletar logo antiga do Supabase ao substituir
 const BUCKET_LEGADO = "arquivos";
@@ -43,6 +45,9 @@ const aplicarMascaraTelefone = (valor: string) => {
 };
 
 export default function PerfilEmpresa() {
+  const { isAdmin, loadingPerfil } = usePerfilUsuario();
+  const router = useRouter();
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -77,9 +82,15 @@ export default function PerfilEmpresa() {
   const [carregandoCidades, setCarregandoCidades] = useState(false);
 
   useEffect(() => {
-    carregarDados();
-    carregarEstados();
-  }, []);
+    if (!loadingPerfil) {
+      if (!isAdmin) {
+        router.replace("/dashboard");
+      } else {
+        carregarDados();
+        carregarEstados();
+      }
+    }
+  }, [loadingPerfil, isAdmin, router]);
 
   const carregarEstados = async () => {
     try {
@@ -128,8 +139,13 @@ export default function PerfilEmpresa() {
         if (perfil.logo_url) setPreviewUrl(perfil.logo_url);
       }
 
-      const { data: listaVendedores } = await supabase.from("vendedores").select("*").order("nome", { ascending: true });
-      if (listaVendedores) setVendedores(listaVendedores);
+      try {
+        const resVendedores = await fetch('/api/vendedores');
+        const listaVendedores = await resVendedores.json();
+        if (Array.isArray(listaVendedores)) setVendedores(listaVendedores);
+      } catch (e) {
+        console.error("Erro buscar vendedores da API:", e);
+      }
 
     } catch (error) {
       console.log("Erro ou perfil novo.", error);
@@ -244,16 +260,32 @@ export default function PerfilEmpresa() {
     }
     setSalvandoVendedor(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Usuário não logado");
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Usuário não logado");
 
       if (vendedorForm.id) {
-        const { error } = await supabase.from("vendedores").update({ nome: vendedorForm.nome, telefone: vendedorForm.telefone, email: vendedorForm.email }).eq("id", vendedorForm.id);
-        if (error) throw error;
-        setVendedores(vendedores.map(v => v.id === vendedorForm.id ? { ...v, nome: vendedorForm.nome, telefone: vendedorForm.telefone, email: vendedorForm.email } : v));
+        const res = await fetch("/api/vendedores", {
+          method: "PUT",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({ id: vendedorForm.id, nome: vendedorForm.nome, telefone: vendedorForm.telefone, email: vendedorForm.email })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erro ao atualizar");
+        setVendedores(vendedores.map(v => v.id === vendedorForm.id ? { ...v, nome: data.nome, telefone: data.telefone, email: data.email } : v));
       } else {
-        const { data, error } = await supabase.from("vendedores").insert([{ user_id: user.id, nome: vendedorForm.nome, telefone: vendedorForm.telefone, email: vendedorForm.email }]).select().single();
-        if (error) throw error;
+        const res = await fetch("/api/vendedores", {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({ user_id: session.user.id, nome: vendedorForm.nome, telefone: vendedorForm.telefone, email: vendedorForm.email })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erro ao cadastrar");
         setVendedores([...vendedores, data]);
       }
       setVendedorForm({ id: "", nome: "", telefone: "", email: "" }); 
@@ -278,11 +310,17 @@ export default function PerfilEmpresa() {
     });
     if (!confirmado) return;
     try {
-      const { error } = await supabase.from("vendedores").delete().eq("id", id);
-      if (error) throw error;
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/vendedores?id=${id}`, { 
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${session?.access_token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao excluir");
+
       setVendedores(vendedores.filter(v => v.id !== id));
       setMenuAbertoId(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       showAlert("Erro ao excluir. Verifique se ele não está atrelado a algum orçamento.", { type: "error", title: "Não foi possível excluir" });
     }
