@@ -46,14 +46,22 @@ export async function uploadParaCloudinary(arquivo: File): Promise<string> {
  * Deleta um arquivo do Cloudinary chamando a rota de API segura do servidor.
  * Silenciosa em caso de falha — nunca bloqueia a operação principal.
  * A API Secret fica apenas no servidor (nunca exposta ao navegador).
+ * C05 — Envia o token de sessão para a rota autenticada.
  */
 export async function deletarDoCloudinary(url: string): Promise<void> {
   if (!url || !url.includes("cloudinary.com")) return;
 
   try {
+    // Importa o cliente supabase dinamicamente para evitar dependência circular
+    const { supabase } = await import("./supabase");
+    const { data: { session } } = await supabase.auth.getSession();
+
     const resposta = await fetch("/api/cloudinary-delete", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session?.access_token ?? ""}`
+      },
       body: JSON.stringify({ url }),
     });
 

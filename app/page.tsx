@@ -54,19 +54,6 @@ function LoginForm() {
     setLoading(false);
   };
 
-  const handleSignUp = async () => {
-    setLoading(true);
-
-    const { error } = await supabase.auth.signUp({ email, password });
-
-    if (error) {
-      showToast(traduzirErro(error.message), "error");
-    } else {
-      showToast("Conta criada! Você já pode fazer login.", "success");
-    }
-    setLoading(false);
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 border border-gray-100">
@@ -115,15 +102,6 @@ function LoginForm() {
             {loading ? "Carregando..." : "Entrar"}
           </button>
         </form>
-
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600">
-            Ainda não tem uma conta?{" "}
-            <button onClick={handleSignUp} type="button" className="text-blue-600 hover:underline font-semibold transition-colors">
-              Criar agora
-            </button>
-          </p>
-        </div>
       </div>
     </div>
   );

@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = "https://hgysykqfirrszechrqzs.supabase.co"
-const supabaseAnonKey = "sb_publishable_FrNEz4ymMwltUBSlKa_SAQ_PdFBI2IY"
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Variáveis de ambiente do Supabase não configuradas: NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY são obrigatórias.")
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
-

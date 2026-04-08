@@ -19,17 +19,42 @@ export default function ImprimirOrcamento() {
   useEffect(() => {
     const processarPDF = async () => {
       try {
-        const { data: orcamento, error: erroOrc } = await supabase
+        // C03 — Verificar quem está logado antes de gerar o PDF
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setError("Você precisa estar logado para visualizar este orçamento.");
+          return;
+        }
+
+        // Verificar se é admin
+        const { data: perfilData } = await supabase
+          .from("perfis_usuarios")
+          .select("funcao")
+          .eq("user_id", user.id)
+          .single();
+        const isAdmin = perfilData?.funcao === "admin";
+
+        // Buscar o orçamento
+        let orcamentoQuery = supabase
           .from("orcamentos")
           .select(`
             *,
             clientes ( nome_razao_social, cpf_cnpj, telefone, endereco, contato_nome, rua_numero, bairro, cidade, uf, cep ),
             vendedores ( nome, telefone, email )
           `)
-          .eq("id", id)
-          .single();
+          .eq("id", id);
 
-        if (erroOrc) throw erroOrc;
+        // C03 — Vendedor só pode ver seus próprios orçamentos
+        if (!isAdmin) {
+          orcamentoQuery = orcamentoQuery.eq("user_id", user.id);
+        }
+
+        const { data: orcamento, error: erroOrc } = await orcamentoQuery.single();
+
+        if (erroOrc || !orcamento) {
+          setError("Orçamento não encontrado ou você não tem permissão para visualizá-lo.");
+          return;
+        }
 
         const { data: itens, error: erroItens } = await supabase
           .from("itens_orcamento")

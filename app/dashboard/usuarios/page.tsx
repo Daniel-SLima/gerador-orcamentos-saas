@@ -33,6 +33,7 @@ export default function UsuariosPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteSuccess, setInviteSuccess] = useState<{ email: string; password: string } | null>(null);
+  const [resetSuccess, setResetSuccess] = useState<{ email: string; password: string } | null>(null);
 
   useEffect(() => {
     if (!loadingPerfil) {
@@ -115,15 +116,53 @@ export default function UsuariosPage() {
     }
   };
 
+  const resetarSenha = async (userIdToReset: string, email: string) => {
+    setMenuAbertoId(null);
+    const confirmado = await showConfirm(
+      `Tem certeza que deseja resetar a senha de ${email}? A senha antiga não funcionará mais.`,
+      { type: "warning", title: "Resetar Senha", confirmLabel: "Sim, resetar", cancelLabel: "Cancelar" }
+    );
+    
+    if (!confirmado) return;
+    
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const res = await fetch("/api/admin/reset-password", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({ user_id: userIdToReset })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      setResetSuccess({ email: data.email, password: data.newPassword });
+    } catch (error: any) {
+      console.error("Erro ao resetar senha:", error);
+      showAlert(error.message, { type: "error", title: "Falha no Reset" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const enviarConvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteEmail) return;
     
     setInviteLoading(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch("/api/admin/invite", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`
+        },
         body: JSON.stringify({ email: inviteEmail })
       });
       
@@ -144,6 +183,10 @@ export default function UsuariosPage() {
     setIsModalOpen(false);
     setInviteEmail("");
     setInviteSuccess(null);
+  };
+
+  const fecharModalReset = () => {
+    setResetSuccess(null);
   };
 
   const getEstatisticas = () => {
@@ -306,6 +349,9 @@ export default function UsuariosPage() {
                           )}
                           
                           <div className="h-px bg-gray-100 my-1 mx-2"></div>
+                          <button onClick={(e) => { e.stopPropagation(); resetarSenha(usuario.user_id, usuario.email); }} className="px-4 py-2 text-sm text-left font-medium text-amber-600 hover:bg-amber-50 transition-colors">Redefinir Senha</button>
+                          
+                          <div className="h-px bg-gray-100 my-1 mx-2"></div>
                           <button onClick={(e) => { e.stopPropagation(); hardDeleteUsuario(usuario.user_id); }} className="px-4 py-2 text-sm text-left font-medium text-red-600 hover:bg-red-50 transition-colors">Apagar Usuário</button>
                         </div>
                       )}
@@ -407,6 +453,54 @@ export default function UsuariosPage() {
               </form>
             )}
 
+          </div>
+        </div>
+      )}
+
+      {/* Modal Sucesso Reset de Senha */}
+      {resetSuccess && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden scale-100 transition-transform">
+            <div className="p-8 text-center space-y-6">
+              <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto text-amber-600">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Senha Resetada!</h3>
+                <p className="text-sm text-gray-500 mb-6">Envie esta nova senha temporária para o vendedor e oriente-o a trocá-la assim que acessar o sistema.</p>
+                
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 text-left space-y-3 relative mt-4">
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(`*Sua Nova Senha*\nLogin: ${resetSuccess.email}\nSenha: ${resetSuccess.password}`);
+                      showAlert("Nova senha copiada com sucesso!", { type: "success", title: "Copiado" });
+                    }}
+                    className="absolute top-4 right-4 p-2 bg-white border border-gray-200 text-gray-600 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 rounded-lg transition-all shadow-sm flex items-center gap-1.5 group"
+                    title="Copiar credenciais"
+                    type="button"
+                  >
+                    <svg className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                  </button>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Login</label>
+                    <p className="font-medium text-gray-900 truncate pr-10">{resetSuccess.email}</p>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Nova Senha Temporária</label>
+                    <p className="font-mono text-lg font-bold text-blue-600 tracking-wider bg-blue-50/50 py-1 px-2 rounded -ml-2 inline-block">
+                      {resetSuccess.password}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <button 
+                onClick={fecharModalReset}
+                className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 px-4 rounded-xl transition-colors shadow-sm"
+              >
+                Concluir
+              </button>
+            </div>
           </div>
         </div>
       )}

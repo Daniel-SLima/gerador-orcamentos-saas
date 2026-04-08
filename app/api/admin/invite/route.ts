@@ -1,45 +1,65 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { randomBytes } from "crypto";
 
-// Função utilitária para gerar senha aleatória segura
+// C08 — Geração de senha criptograficamente segura (crypto.randomBytes ao invés de Math.random)
 function generateRandomPassword() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
-  let password = "";
-  for (let i = 0; i < 12; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return password;
+  return Array.from(randomBytes(12))
+    .map(b => chars[b % chars.length])
+    .join("");
 }
 
 export async function POST(request: Request) {
   try {
+    // C02 — Verificar se quem está chamando é um admin autenticado
+    const authHeader = request.headers.get("Authorization");
+    if (!authHeader) {
+      return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
+    }
+
     const { email } = await request.json();
 
     if (!email) {
       return NextResponse.json({ error: "E-mail é obrigatório." }, { status: 400 });
     }
 
-    // Usando a Service Role Key para contornar limitações e não deslogar o admin
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-    if (!supabaseUrl || !serviceRoleKey) {
-      return NextResponse.json(
-        { error: "Variaveis de ambiente do Supabase não configuradas." },
-        { status: 500 }
-      );
+    if (!supabaseUrl || !serviceRoleKey || !anonKey) {
+      return NextResponse.json({ error: "Variáveis de ambiente do Supabase não configuradas." }, { status: 500 });
     }
 
+    // Valida o token de quem está chamando
+    const authClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const { data: authData, error: authError } = await authClient.auth.getUser();
+    if (authError || !authData.user) {
+      return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+    }
+
+    // Confirma que quem está chamando é admin
+    const { data: perfilData } = await authClient
+      .from("perfis_usuarios")
+      .select("funcao")
+      .eq("user_id", authData.user.id)
+      .single();
+
+    if (perfilData?.funcao !== "admin") {
+      return NextResponse.json({ error: "Apenas administradores podem convidar novos usuários." }, { status: 403 });
+    }
+
+    // Usa a chave de serviço para criar o usuário
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
+      auth: { autoRefreshToken: false, persistSession: false },
     });
 
     const tempPassword = generateRandomPassword();
 
-    // Cria o usuário já com e-mail confirmado silenciosamente
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: email,
       password: tempPassword,
@@ -50,7 +70,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: createError.message }, { status: 400 });
     }
 
-    // Cadastra o perfil no banco com a regra hardcoded de "vendedor"
     if (newUser.user) {
       const { error: profileError } = await supabaseAdmin
         .from("perfis_usuarios")
@@ -65,7 +84,6 @@ export async function POST(request: Request) {
 
       if (profileError) {
         console.error("Erro ao criar perfil automaticamente:", profileError);
-        // Não apaga a auth, pois o perfil pode ser criado depois, mas registra o log
       }
     }
 
