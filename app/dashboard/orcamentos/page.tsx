@@ -115,7 +115,7 @@ function FormularioOrcamento() {
 
       const [resClientes, resVendedores, resProdutos] = await Promise.all([
         supabase.from("clientes").select("id, nome_razao_social").order("nome_razao_social"),
-        supabase.from("vendedores").select("id, nome").order("nome"),
+        fetch("/api/vendedores").then(res => res.json()).then(data => ({ data: Array.isArray(data) ? data : [] })).catch(err => ({ data: [], error: err })),
         supabase.from("produtos").select("id, descricao, valor_unitario, medidas").order("descricao")
       ]);
 
