@@ -68,11 +68,21 @@ export async function POST(request: Request) {
     // 4. Deleções de segurança no Banco (Caso ON DELETE CASCADE não esteja ativado)
     // Deleta o perfil explicitamente
     await adminClient.from("perfis_usuarios").delete().eq("user_id", userIdToDelete);
-    // Deleta os produtos 
+    // Deleta os produtos
     await adminClient.from("produtos").delete().eq("user_id", userIdToDelete);
-    // Deleta orçamentos associados
+    // Deleta orçamentos associados (itens e anexos em cascata)
+    const { data: orcamentosDoUsuario } = await adminClient
+      .from("orcamentos")
+      .select("id")
+      .eq("user_id", userIdToDelete);
+
+    if (orcamentosDoUsuario && orcamentosDoUsuario.length > 0) {
+      const orcIds = orcamentosDoUsuario.map((o: { id: string }) => o.id);
+      await adminClient.from("orcamento_anexos").delete().in("orcamento_id", orcIds);
+      await adminClient.from("itens_orcamento").delete().in("orcamento_id", orcIds);
+    }
     await adminClient.from("orcamentos").delete().eq("user_id", userIdToDelete);
-    // Deleta os clientes do vendedor (Opcional, mas como é pra varrer tudo...)
+    // Deleta os clientes do vendedor
     await adminClient.from("clientes").delete().eq("user_id", userIdToDelete);
 
     // 5. Apaga definitivamente o usuário da base do Supabase Auth

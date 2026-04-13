@@ -2,8 +2,8 @@ name: Supabase Keep Alive
 
 on:
   schedule:
-    # A cada 6 horas — garante que nunca fica 7 dias inativo
-    - cron: '0 */6 * * *'
+    # A cada 3 dias às 8h GMT — mantém o banco ativo com mínimo de requisições
+    - cron: '0 8 */3 * *'
   workflow_dispatch:
 
 jobs:
