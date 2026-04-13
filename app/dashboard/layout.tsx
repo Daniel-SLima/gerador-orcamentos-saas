@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { PerfilUsuarioProvider, usePerfilUsuario } from "../hooks/usePerfilUsuario";
 import { ToastProvider } from "../components/Toast";
+import NotificationBell from "../components/NotificationBell";
 import { deletarDoCloudinary } from "../lib/uploadCloudinary";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -27,7 +28,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   
   // 🚀 O ganho de performance mágico acontece aqui: isso agora puxa da memória (Cache) instantaneamente!
-  const { isAdmin, isDesativado, loadingPerfil } = usePerfilUsuario();
+  const { isAdmin, isOperador, isDesativado, loadingPerfil } = usePerfilUsuario();
 
   // =========================================================================
   // 🧹 FAXINA INTELIGENTE DE ANEXOS TEMPORÁRIOS
@@ -100,6 +101,8 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     { href: "/dashboard/produtos", label: "Produtos", icon: "📦" },
     { href: "/dashboard/orcamentos", label: "Orçamentos", icon: "📄" },
     { href: "/dashboard/historico", label: "Histórico", icon: "🕒" },
+    ...(isAdmin ? [{ href: "/dashboard/producao", label: "Produção", icon: "🏭" }] : []),
+    ...(isOperador ? [{ href: "/dashboard/setor", label: "Meu Setor", icon: "⚙️" }] : []),
     ...(isAdmin ? [{ href: "/dashboard/usuarios", label: "Equipe", icon: "🛡️" }] : []),
     { href: "/dashboard/mudar-senha", label: "Segurança", icon: "🔒" }
   ];
@@ -138,9 +141,12 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/Logo_Sane_512x512.png" alt="SANE" className="h-8 w-auto object-contain" />
         </div>
-        <button onClick={() => setIsMobileMenuOpen(true)} className="text-gray-600 hover:text-blue-600 focus:outline-none p-2 bg-gray-50 rounded-lg">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-        </button>
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <button onClick={() => setIsMobileMenuOpen(true)} className="text-gray-600 hover:text-blue-600 focus:outline-none p-2 bg-gray-50 rounded-lg">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+          </button>
+        </div>
       </header>
 
       {/* 2. FUNDO ESCURO DO MOBILE */}
@@ -153,6 +159,8 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
         <div className="h-16 md:h-24 flex items-center justify-between px-6 border-b border-gray-100">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/Logo_Sane_512x512.png" alt="SANE" className="h-10 md:h-12 w-auto object-contain" />
+          <div className="hidden md:flex items-center">
+          </div>
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-gray-400 hover:text-red-500 p-1">
             <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
@@ -180,6 +188,10 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
 
       {/* 4. CONTEÚDO PRINCIPAL */}
       <main className="md:pl-72 pt-16 md:pt-0 min-h-screen w-full transition-all duration-300">
+        {/* Barra superior desktop com sino */}
+        <div className="hidden md:flex items-center justify-end px-6 py-3 bg-white border-b border-gray-100 sticky top-0 z-30">
+          <NotificationBell />
+        </div>
         {children}
       </main>
       

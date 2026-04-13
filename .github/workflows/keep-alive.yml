@@ -2,29 +2,16 @@ name: Supabase Keep Alive
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    # A cada 6 horas — garante que nunca fica 7 dias inativo
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase API
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      - name: Ping Supabase
         run: |
-          if [ -z "$SUPABASE_URL" ]; then
-            echo "ERRO: A secret SUPABASE_URL não foi encontrada ou está vazia."
-            exit 1
-          fi
-          
-          if [ -z "$SUPABASE_ANON_KEY" ]; then
-            echo "ERRO: A secret SUPABASE_ANON_KEY não foi encontrada ou está vazia."
-            exit 1
-          fi
-
-          echo "Enviando ping para o Supabase para manter o banco de dados ativo..."
-          curl -f -sS -X GET "${SUPABASE_URL}/rest/v1/produtos?select=id&limit=1" \
-            -H "apikey: ${SUPABASE_ANON_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}"
+          echo "Enviando ping para manter banco ativo..."
+          curl -f -sS -o /dev/null "${{ secrets.SUPABASE_URL }}"
+          echo "Ping enviado com sucesso."

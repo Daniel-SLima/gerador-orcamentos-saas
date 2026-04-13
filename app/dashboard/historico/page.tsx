@@ -15,6 +15,7 @@ interface Orcamento {
   status: string;
   endereco_obra?: string;
   contato_obra?: string;
+  user_id: string;
   clientes: {
     nome_razao_social: string;
   };
@@ -217,13 +218,38 @@ export default function HistoricoOrcamentosPage() {
       const { error } = await supabase.from("orcamentos").update({ status: novoStatus }).eq("id", id);
       if (error) throw error;
       setOrcamentos(orcamentos.map(orc => orc.id === id ? { ...orc, status: novoStatus } : orc));
+
+      // --- NOTIFICAÇÃO PARA VENDEDOR ---
+      if (isAdmin && (novoStatus === "Aprovado" || novoStatus === "Recusado")) {
+        try {
+          const orc = orcamentos.find(o => o.id === id);
+          if (orc) {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user && orc.user_id !== user.id) {
+              const numeroFormatado = String(orc.numero_orcamento).padStart(5, "0");
+              await supabase.from("notifications").insert({
+                user_id: orc.user_id,
+                tipo: novoStatus === "Aprovado" ? "orcamento_aprovado" : "orcamento_recusado",
+                titulo: novoStatus === "Aprovado"
+                  ? `Orçamento #${numeroFormatado} aprovado ✅`
+                  : `Orçamento #${numeroFormatado} recusado ❌`,
+                mensagem: novoStatus === "Aprovado"
+                  ? "Seu orçamento foi aprovado pelo administrador."
+                  : "Seu orçamento foi recusado pelo administrador.",
+                link: `/imprimir/${id}?action=view`,
+              });
+            }
+          }
+        } catch (err) {
+          console.error("Erro ao enviar notificação:", err);
+        }
+      }
     } catch (error) {
       showAlert("Erro ao mudar status: " + (error as Error).message, { type: "error", title: "Erro" });
     }
   };
 
-  const abrirModalGerarOP = (orc: Orcamento) => {
-    setMenuAbertoId(null);
+  const iniciarModalOP = (orc: Orcamento) => {
     setModoEdicaoOp(false);
     setOrcamentoOpSelecionado(orc.id);
     // Pré-preencher com dados já existentes no orçamento
@@ -245,6 +271,22 @@ export default function HistoricoOrcamentosPage() {
     setModalOpAberto(true);
   };
 
+  const abrirModalGerarOP = (orc: Orcamento) => {
+    setMenuAbertoId(null);
+    // ⚠️ AVISO: Se o orçamento está aprovado, os itens podem estar desatualizados
+    if (orc.status === "Aprovado") {
+      showConfirm(
+        "Este orçamento já foi aprovado. Se os itens foram alterados após a aprovação, a Ordem de Produção pode conter valores desatualizados. Deseja continuar?",
+        { type: "warning", title: "Aviso — Orçamento Aprovado", confirmLabel: "Continuar mesmo assim", cancelLabel: "Cancelar" }
+      ).then((confirmado) => {
+        if (!confirmado) return;
+        iniciarModalOP(orc);
+      });
+    } else {
+      iniciarModalOP(orc);
+    }
+  };
+
   const abrirModalEditarDadosOP = (orc: Orcamento) => {
     abrirModalGerarOP(orc);
     setModoEdicaoOp(true); // Apenas salvar, não gerar PDF
@@ -253,7 +295,7 @@ export default function HistoricoOrcamentosPage() {
   const confirmarGerarOP = async () => {
     if (!orcamentoOpSelecionado) return;
     setSalvandoOp(true);
-    
+
     let enderecoCombinado = "";
     if (opEnderecoRua || opEnderecoBairro || opEnderecoCidade) {
       const partesEnd = [];
@@ -262,7 +304,7 @@ export default function HistoricoOrcamentosPage() {
       if (opEnderecoCidade) partesEnd.push(opEnderecoCidade);
       enderecoCombinado = partesEnd.join(" - ");
     }
-    
+
     let contatoCombinado = "";
     if (opContatoNome || opContatoTelefone) {
       const partesCont = [];
@@ -293,6 +335,90 @@ export default function HistoricoOrcamentosPage() {
           ? { ...o, endereco_obra: enderecoCombinado, contato_obra: contatoCombinado }
           : o
       ));
+
+      // ──────────────────────────────────────────────
+      // CRIAÇÃO DA ORDEM DE PRODUÇÃO
+      // ──────────────────────────────────────────────
+      if (!modoEdicaoOp) {
+        // Verifica se já existe OP para este orçamento
+        const { data: opExistente } = await supabase
+          .from("ordens_producao")
+          .select("id")
+          .eq("orcamento_id", orcamentoOpSelecionado)
+          .maybeSingle();
+
+        if (!opExistente) {
+          // Cria a Ordem de Produção
+          const { data: novaOp, error: erroOp } = await supabase
+            .from("ordens_producao")
+            .insert({ orcamento_id: orcamentoOpSelecionado, status: "em_producao" })
+            .select("id")
+            .single();
+
+          if (erroOp) throw new Error("Erro ao criar Ordem de Produção: " + erroOp.message);
+
+          // Busca os itens do orçamento para criar itens da OP
+          const { data: itensOrc } = await supabase
+            .from("itens_orcamento")
+            .select("id, descricao, quantidade, medidas, produtos(imagem_url)")
+            .eq("orcamento_id", orcamentoOpSelecionado);
+
+          if (itensOrc && itensOrc.length > 0) {
+            const itensParaOp = itensOrc.map(item => ({
+              op_id: novaOp.id,
+              item_orcamento_id: item.id,
+              descricao: item.descricao || "",
+              quantidade: item.quantidade,
+              medidas: item.medidas || null,
+              imagem_url: Array.isArray(item.produtos)
+                ? item.produtos[0]?.imagem_url
+                : (item.produtos as { imagem_url?: string } | null)?.imagem_url || null,
+              setor_atual: "aguardando",
+              status_item: "pendente"
+            }));
+
+            const { error: erroItensOp } = await supabase
+              .from("itens_op")
+              .insert(itensParaOp);
+
+            if (erroItensOp) {
+              console.error("Erro ao criar itens da OP:", erroItensOp);
+            }
+
+            // --- NOTIFICAÇÃO PARA OPERADORES DA METALURGIA ---
+            try {
+              const { data: opCriada } = await supabase
+                .from("ordens_producao")
+                .select("numero_op")
+                .eq("orcamento_id", orcamentoOpSelecionado)
+                .single();
+
+              if (opCriada) {
+                const { data: operadores } = await supabase
+                  .from("perfis_usuarios")
+                  .select("user_id")
+                  .eq("funcao", "operador")
+                  .eq("setor", "metalurgia");
+
+                if (operadores && operadores.length > 0) {
+                  const numeroOp = String(opCriada.numero_op).padStart(4, "0");
+                  const notificacoes = operadores.map(op => ({
+                    user_id: op.user_id,
+                    tipo: "nova_op",
+                    titulo: `Nova OP #${numeroOp} aguardando`,
+                    mensagem: "Uma nova Ordem de Produção chegou para a Metalurgia.",
+                    link: "/dashboard/setor",
+                  }));
+                  await supabase.from("notifications").insert(notificacoes);
+                }
+              }
+            } catch (err) {
+              console.error("Erro ao notificar operadores:", err);
+            }
+          }
+        }
+        // Se opExistente: silenciosamente ignora (OP já foi criada antes)
+      }
 
       setModalOpAberto(false);
       if (!modoEdicaoOp) {
@@ -346,6 +472,66 @@ export default function HistoricoOrcamentosPage() {
     return new Intl.DateTimeFormat('pt-BR').format(data);
   };
 
+  const exportarCSV = async () => {
+    try {
+      // Busca email do criador junto com os orçamentos
+      const { data: orcamentosCompletos, error } = await supabase
+        .from("orcamentos")
+        .select(`
+          id,
+          numero_orcamento,
+          data_emissao,
+          valor_total,
+          status,
+          endereco_obra,
+          vendedor_id,
+          user_id,
+          clientes ( nome_razao_social ),
+          vendedores ( nome )
+        `)
+        .order("numero_orcamento", { ascending: false });
+
+      if (error) throw error;
+
+      // Busca emails dos criadores
+      const userIds = orcamentosCompletos.map(o => o.user_id);
+      const { data: perfis } = await supabase
+        .from("perfis_usuarios")
+        .select("user_id, email")
+        .in("user_id", userIds);
+
+      const emailPorUserId: Record<string, string> = {};
+      perfis?.forEach(p => { emailPorUserId[p.user_id] = p.email; });
+
+      // Monta CSV
+      const cabecalho = "Nº Orçamento;Data Emissão;Cliente;Valor Total;Status;Endereço Obra;Vendedor;Email Criador;Itens\n";
+      const linhas = orcamentosCompletos.map(orc => {
+        const nomeCliente = Array.isArray(orc.clientes)
+          ? orc.clientes[0]?.nome_razao_social
+          : orc.clientes?.nome_razao_social;
+        const nomeVendedor = Array.isArray(orc.vendedores)
+          ? orc.vendedores[0]?.nome
+          : orc.vendedores?.nome || "";
+        const email = emailPorUserId[orc.user_id] || "";
+        const data = orc.data_emissao ? formatarData(orc.data_emissao) : "";
+        const valor = formatarMoeda(Number(orc.valor_total)).replace("R$ ", "").replace(".", ",");
+
+        return `${orc.numero_orcamento};${data};${nomeCliente};${valor};${orc.status};${orc.endereco_obra || ""};${nomeVendedor};${email};`;
+      }).join("\n");
+
+      const csv = cabecalho + linhas;
+      const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `historico_orcamentos_${new Date().toISOString().slice(0,10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      showAlert("Erro ao exportar CSV: " + (err as Error).message, { type: "error", title: "Erro" });
+    }
+  };
+
   const toggleMenu = (id: string, e?: React.MouseEvent) => {
     if (menuAbertoId === id) {
       setMenuAbertoId(null);
@@ -390,9 +576,21 @@ export default function HistoricoOrcamentosPage() {
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
         <h1 className="text-2xl font-bold text-gray-900">Histórico de Orçamentos</h1>
-        <p className="text-sm font-semibold text-gray-500 bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm">
-          Total listado: <span className="text-blue-600">{orcamentosFiltrados.length}</span>
-        </p>
+        <div className="flex items-center gap-3">
+          {isAdmin && (
+            <button
+              onClick={exportarCSV}
+              disabled={loading || orcamentos.length === 0}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg font-bold text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-wait flex items-center gap-2 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+              Exportar CSV
+            </button>
+          )}
+          <p className="text-sm font-semibold text-gray-500 bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm">
+            Total listado: <span className="text-blue-600">{orcamentosFiltrados.length}</span>
+          </p>
+        </div>
       </div>
 
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row gap-4 md:items-end">
@@ -513,6 +711,7 @@ export default function HistoricoOrcamentosPage() {
                       <select
                         value={orc.status}
                         onChange={(e) => mudarStatus(orc.id, e.target.value)}
+                        disabled={!isAdmin && (orc.status === "Aprovado" || orc.status === "Recusado")}
                         className={`inline-block px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border appearance-none outline-none cursor-pointer ${orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
                             orc.status === 'Aberto' ? 'bg-blue-50 text-blue-700 border-blue-200' :
                               orc.status === 'Aprovado' ? 'bg-green-50 text-green-700 border-green-200' :
@@ -522,8 +721,8 @@ export default function HistoricoOrcamentosPage() {
                       >
                         <option value="Rascunho">Rascunho</option>
                         <option value="Aberto">Aberto</option>
-                        <option value="Aprovado" disabled={!isAdmin}>Aprovado</option>
-                        <option value="Recusado">Recusado</option>
+                        {isAdmin && <option value="Aprovado">Aprovado</option>}
+                        {isAdmin && <option value="Recusado">Recusado</option>}
                       </select>
                     </div>
                     <p className="font-black text-green-600 text-lg">{formatarMoeda(orc.valor_total)}</p>
@@ -561,6 +760,7 @@ export default function HistoricoOrcamentosPage() {
                         <select
                           value={orc.status}
                           onChange={(e) => mudarStatus(orc.id, e.target.value)}
+                          disabled={!isAdmin && (orc.status === "Aprovado" || orc.status === "Recusado")}
                           className={`px-3 py-1 text-xs font-bold rounded-md border appearance-none outline-none cursor-pointer ${orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
                               orc.status === 'Aberto' ? 'bg-blue-50 text-blue-700 border-blue-200' :
                                 orc.status === 'Aprovado' ? 'bg-green-50 text-green-700 border-green-200' :
@@ -570,8 +770,8 @@ export default function HistoricoOrcamentosPage() {
                         >
                           <option value="Rascunho">Rascunho</option>
                           <option value="Aberto">Aberto</option>
-                          <option value="Aprovado" disabled={!isAdmin}>Aprovado</option>
-                          <option value="Recusado">Recusado</option>
+                          {isAdmin && <option value="Aprovado">Aprovado</option>}
+                          {isAdmin && <option value="Recusado">Recusado</option>}
                         </select>
                       </td>
                       <td className="p-4 text-green-600 font-bold">{formatarMoeda(orc.valor_total)}</td>

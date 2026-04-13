@@ -407,6 +407,32 @@ function FormularioOrcamento() {
 
       setAnexosFalhos([]);
 
+      // --- NOTIFICAÇÕES PARA ADMINS ---
+      if (!isAdmin) {
+        try {
+          const { data: admins } = await supabase
+            .from("perfis_usuarios")
+            .select("user_id")
+            .eq("funcao", "admin");
+
+          if (admins && admins.length > 0) {
+            const nomeCliente = clientes.find(c => c.id === clienteId)?.nome_razao_social || "Cliente";
+            const notificacoes = admins.map(admin => ({
+              user_id: admin.user_id,
+              tipo: editId ? "orcamento_atualizado" : "novo_orcamento",
+              titulo: editId
+                ? `Orçamento atualizado`
+                : `Novo orçamento criado`,
+              mensagem: `Cliente: ${nomeCliente}`,
+              link: `/imprimir/${idFinal}?action=view`,
+            }));
+            await supabase.from("notifications").insert(notificacoes);
+          }
+        } catch (err) {
+          console.error("Erro ao enviar notificação:", err);
+        }
+      }
+
       window.open(`/imprimir/${idFinal}?action=view`, "_blank");
       window.location.href = "/dashboard/historico";
 
