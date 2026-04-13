@@ -11,8 +11,17 @@ interface PerfilUsuario {
   user_id: string;
   email: string;
   funcao: string;
+  setor: string | null;
   created_at: string;
 }
+
+const SETORES = [
+  { value: "metalurgia", label: "Metalurgia" },
+  { value: "impressao", label: "Impressão" },
+  { value: "plotagem", label: "Plotagem" },
+  { value: "instalacao", label: "Instalação" },
+  { value: "embalagem", label: "Embalagem" },
+];
 
 export default function UsuariosPage() {
   const { isAdmin, loadingPerfil } = usePerfilUsuario();
@@ -26,7 +35,7 @@ export default function UsuariosPage() {
 
   // Filtros
   const [busca, setBusca] = useState("");
-  const [filtroFuncao, setFiltroFuncao] = useState<"todos" | "admin" | "vendedor">("todos");
+  const [filtroFuncao, setFiltroFuncao] = useState<"todos" | "admin" | "vendedor" | "operador">("todos");
 
   // Convite Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -34,6 +43,13 @@ export default function UsuariosPage() {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteSuccess, setInviteSuccess] = useState<{ email: string; password: string } | null>(null);
   const [resetSuccess, setResetSuccess] = useState<{ email: string; password: string } | null>(null);
+
+  // Editar Usuario Modal
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editUsuario, setEditUsuario] = useState<PerfilUsuario | null>(null);
+  const [editFuncao, setEditFuncao] = useState("");
+  const [editSetor, setEditSetor] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
 
   useEffect(() => {
     if (!loadingPerfil) {
@@ -192,8 +208,36 @@ export default function UsuariosPage() {
   const getEstatisticas = () => {
     const total = usuarios.length;
     const admins = usuarios.filter(u => u.funcao === "admin").length;
-    const vendedores = total - admins;
-    return { total, admins, vendedores };
+    const vendedores = usuarios.filter(u => u.funcao === "vendedor").length;
+    const operadores = usuarios.filter(u => u.funcao === "operador").length;
+    return { total, admins, vendedores, operadores };
+  };
+
+  const abrirEditModal = (usuario: PerfilUsuario) => {
+    setEditUsuario(usuario);
+    setEditFuncao(usuario.funcao);
+    setEditSetor(usuario.setor || "");
+    setEditModalOpen(true);
+    setMenuAbertoId(null);
+  };
+
+  const salvarEdicao = async () => {
+    if (!editUsuario) return;
+    setEditLoading(true);
+    try {
+      const { error } = await supabase
+        .from("perfis_usuarios")
+        .update({ funcao: editFuncao, setor: editSetor || null })
+        .eq("id", editUsuario.id);
+      if (error) throw error;
+      setUsuarios(usuarios.map(u => u.id === editUsuario.id ? { ...u, funcao: editFuncao, setor: editSetor || null } : u));
+      setEditModalOpen(false);
+      showAlert("Usuário atualizado com sucesso!", { type: "success", title: "Feito" });
+    } catch (err) {
+      showAlert("Erro ao salvar: " + (err as Error).message, { type: "error", title: "Erro" });
+    } finally {
+      setEditLoading(false);
+    }
   };
 
   const usuariosFiltrados = usuarios.filter(u => {
@@ -202,7 +246,7 @@ export default function UsuariosPage() {
     return matchesBusca && matchesFuncao;
   });
 
-  const { total, admins, vendedores } = getEstatisticas();
+  const { total, admins, vendedores, operadores } = getEstatisticas();
 
   if (loadingPerfil || loading) {
     return (
@@ -238,12 +282,18 @@ export default function UsuariosPage() {
       </div>
 
       {/* Cards de Estatísticas */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
           <div className="bg-gray-50 w-12 h-12 rounded-full flex items-center justify-center text-gray-400">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
           </div>
-          <div><p className="text-sm font-semibold text-gray-500 uppercase">Membros</p><p className="text-2xl font-bold text-gray-900">{total}</p></div>
+          <div><p className="text-sm font-semibold text-gray-500 uppercase">Total</p><p className="text-2xl font-bold text-gray-900">{total}</p></div>
+        </div>
+        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+          <div className="bg-purple-50 w-12 h-12 rounded-full flex items-center justify-center text-purple-600">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+          </div>
+          <div><p className="text-sm font-semibold text-gray-500 uppercase">Admins</p><p className="text-2xl font-bold text-gray-900">{admins}</p></div>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
           <div className="bg-blue-50 w-12 h-12 rounded-full flex items-center justify-center text-blue-600">
@@ -251,11 +301,11 @@ export default function UsuariosPage() {
           </div>
           <div><p className="text-sm font-semibold text-gray-500 uppercase">Vendedores</p><p className="text-2xl font-bold text-gray-900">{vendedores}</p></div>
         </div>
-        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4 col-span-2 md:col-span-1 border-l-[4px] border-l-purple-500">
-          <div className="bg-purple-50 w-12 h-12 rounded-full flex items-center justify-center text-purple-600">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4 border-l-[4px] border-l-orange-500">
+          <div className="bg-orange-50 w-12 h-12 rounded-full flex items-center justify-center text-orange-600">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
           </div>
-          <div><p className="text-sm font-semibold text-gray-500 uppercase">Admins</p><p className="text-2xl font-bold text-gray-900">{admins}</p></div>
+          <div><p className="text-sm font-semibold text-gray-500 uppercase">Operadores</p><p className="text-2xl font-bold text-gray-900">{operadores}</p></div>
         </div>
       </div>
 
@@ -275,8 +325,9 @@ export default function UsuariosPage() {
         </div>
         <div className="flex bg-gray-100 p-1 rounded-xl h-[46px] self-start md:self-auto overflow-x-auto w-full md:w-auto">
           <button onClick={() => setFiltroFuncao("todos")} className={`px-4 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${filtroFuncao === "todos" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Todos</button>
-          <button onClick={() => setFiltroFuncao("vendedor")} className={`px-4 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${filtroFuncao === "vendedor" ? "bg-white text-blue-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Vendedores</button>
           <button onClick={() => setFiltroFuncao("admin")} className={`px-4 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${filtroFuncao === "admin" ? "bg-white text-purple-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Admins</button>
+          <button onClick={() => setFiltroFuncao("vendedor")} className={`px-4 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${filtroFuncao === "vendedor" ? "bg-white text-blue-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Vendedores</button>
+          <button onClick={() => setFiltroFuncao("operador")} className={`px-4 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${filtroFuncao === "operador" ? "bg-white text-orange-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Operadores</button>
         </div>
       </div>
 
@@ -313,49 +364,47 @@ export default function UsuariosPage() {
                   </div>
 
                   {/* Status & Ações */}
-                  <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-3 md:pt-0 border-gray-100">
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
-                      isAdminRole ? "bg-purple-50 text-purple-700 border-purple-200" : 
-                      usuario.funcao === "desativado" ? "bg-gray-100 text-gray-500 border-gray-300" : 
-                      "bg-blue-50 text-blue-700 border-blue-200"
-                    }`}>
-                      {isAdminRole ? "🛡️ Admin" : usuario.funcao === "desativado" ? "🚫 Desativado" : "💼 Vendedor"}
-                    </span>
-                    
-                    {!isAdminRole && (
-                      <div className="relative">
-                        <button 
-                        onClick={(e) => { e.stopPropagation(); setMenuAbertoId(menuAbertoId === usuario.id ? null : usuario.id); }}
-                        className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors focus:outline-none"
-                      >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
-                      </button>
-                      
-                      {menuAbertoId === usuario.id && (
-                        <div className="absolute right-0 top-12 w-48 bg-white border border-gray-100 rounded-xl shadow-xl z-50 flex flex-col py-1 animate-fade-in origin-top-right">
-                          <div className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Ações</div>
-                          
-                          {usuario.funcao === "desativado" ? (
-                            <button onClick={(e) => { e.stopPropagation(); alterarFuncao(usuario.id, "vendedor"); }} className="px-4 py-2 text-sm text-left font-medium text-green-600 hover:bg-green-50 transition-colors">Reativar Acesso</button>
-                          ) : (
-                            <>
-                              {isAdminRole ? (
-                                <button onClick={(e) => { e.stopPropagation(); alterarFuncao(usuario.id, "vendedor"); }} className="px-4 py-2 text-sm text-left font-medium text-gray-700 hover:bg-gray-50 hover:text-blue-600 transition-colors">Tornar Vendedor</button>
-                              ) : (
-                                <button onClick={(e) => { e.stopPropagation(); alterarFuncao(usuario.id, "admin"); }} className="px-4 py-2 text-sm text-left font-medium text-gray-700 hover:bg-gray-50 hover:text-purple-600 transition-colors">Tornar Administrador</button>
-                              )}
-                              <button onClick={(e) => { e.stopPropagation(); alterarFuncao(usuario.id, "desativado"); }} className="px-4 py-2 text-sm text-left font-medium text-orange-600 hover:bg-orange-50 transition-colors">Suspender Acesso</button>
-                            </>
-                          )}
-                          
-                          <div className="h-px bg-gray-100 my-1 mx-2"></div>
-                          <button onClick={(e) => { e.stopPropagation(); resetarSenha(usuario.user_id, usuario.email); }} className="px-4 py-2 text-sm text-left font-medium text-amber-600 hover:bg-amber-50 transition-colors">Redefinir Senha</button>
-                          
-                          <div className="h-px bg-gray-100 my-1 mx-2"></div>
-                          <button onClick={(e) => { e.stopPropagation(); hardDeleteUsuario(usuario.user_id); }} className="px-4 py-2 text-sm text-left font-medium text-red-600 hover:bg-red-50 transition-colors">Apagar Usuário</button>
-                        </div>
+                  <div className="flex items-center justify-between md:justify-end gap-3 border-t md:border-t-0 pt-3 md:pt-0 border-gray-100">
+                    <div className="flex flex-col items-end gap-1">
+                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
+                        isAdminRole ? "bg-purple-50 text-purple-700 border-purple-200" :
+                        usuario.funcao === "desativado" ? "bg-gray-100 text-gray-500 border-gray-300" :
+                        usuario.funcao === "operador" ? "bg-orange-50 text-orange-700 border-orange-200" :
+                        "bg-blue-50 text-blue-700 border-blue-200"
+                      }`}>
+                        {isAdminRole ? "🛡️ Admin" : usuario.funcao === "desativado" ? "🚫 Desativado" : usuario.funcao === "operador" ? "🏭 Operador" : "💼 Vendedor"}
+                      </span>
+                      {usuario.funcao === "operador" && usuario.setor && (
+                        <span className="text-xs text-orange-600 font-medium capitalize">{usuario.setor}</span>
                       )}
                     </div>
+
+                    <button
+                      onClick={() => abrirEditModal(usuario)}
+                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors focus:outline-none"
+                      title="Editar usuário"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                    </button>
+
+                    {!isAdminRole && (
+                      <button
+                        onClick={() => resetarSenha(usuario.user_id, usuario.email)}
+                        className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors focus:outline-none"
+                        title="Redefinir senha"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                      </button>
+                    )}
+
+                    {!isAdminRole && (
+                      <button
+                        onClick={() => hardDeleteUsuario(usuario.user_id)}
+                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors focus:outline-none"
+                        title="Apagar usuário"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                      </button>
                     )}
                   </div>
 
@@ -499,6 +548,91 @@ export default function UsuariosPage() {
                 className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 px-4 rounded-xl transition-colors shadow-sm"
               >
                 Concluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Editar Usuario */}
+      {editModalOpen && editUsuario && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden scale-100">
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">Editar Usuário</h3>
+              <button type="button" onClick={() => setEditModalOpen(false)} className="text-gray-400 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 p-1.5 rounded-full transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">E-mail</label>
+                <p className="text-gray-900 font-medium truncate">{editUsuario.email}</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Função</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {["admin", "vendedor", "operador"].map(f => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setEditFuncao(f)}
+                      className={`py-2.5 px-3 rounded-xl text-sm font-bold capitalize border-2 transition-all ${
+                        editFuncao === f
+                          ? f === "admin" ? "bg-purple-100 border-purple-300 text-purple-700"
+                          : f === "operador" ? "bg-orange-100 border-orange-300 text-orange-700"
+                          : "bg-blue-100 border-blue-300 text-blue-700"
+                          : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
+                      }`}
+                    >
+                      {f === "admin" ? "🛡️" : f === "operador" ? "🏭" : "💼"} {f}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {editFuncao === "operador" && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Setor de Trabalho</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {SETORES.map(s => (
+                      <button
+                        key={s.value}
+                        type="button"
+                        onClick={() => setEditSetor(s.value)}
+                        className={`py-2.5 px-3 rounded-xl text-sm font-medium capitalize border-2 transition-all ${
+                          editSetor === s.value
+                            ? "bg-orange-100 border-orange-300 text-orange-700"
+                            : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {editFuncao !== "operador" && editUsuario.funcao === "operador" && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs p-3 rounded-lg">
+                  ⚠️ Ao remover a função Operador, o setor definido será limpo.
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 rounded-b-2xl">
+              <button type="button" onClick={() => setEditModalOpen(false)} className="px-5 py-2.5 font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-xl transition-colors">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={salvarEdicao}
+                disabled={editLoading || (editFuncao === "operador" && !editSetor)}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-[0_4px_14px_0_rgb(37,99,235,0.39)] hover:shadow-[0_6px_20px_rgba(37,99,235,0.23)] hover:-translate-y-px transition-all disabled:opacity-50"
+              >
+                {editLoading ? "Salvando..." : "Salvar Alterações"}
               </button>
             </div>
           </div>

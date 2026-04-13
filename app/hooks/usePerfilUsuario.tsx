@@ -6,7 +6,9 @@ import { supabase } from "../lib/supabase";
 interface PerfilContextType {
   isAdmin: boolean;
   isVendedor: boolean;
+  isOperador: boolean;
   isDesativado: boolean;
+  setorDoOperador: string | null;
   userId: string | null;
   loadingPerfil: boolean;
 }
@@ -15,13 +17,15 @@ const PerfilContext = createContext<PerfilContextType | undefined>(undefined);
 
 export function PerfilUsuarioProvider({ children }: { children: React.ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
-  const [isVendedor, setIsVendedor] = useState(true); // Padrão seguro
+  const [isVendedor, setIsVendedor] = useState(true);
+  const [isOperador, setIsOperador] = useState(false);
   const [isDesativado, setIsDesativado] = useState(false);
+  const [setorDoOperador, setSetorDoOperador] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [loadingPerfil, setLoadingPerfil] = useState(true);
 
   useEffect(() => {
-    let mounted = true; // Flag to prevent state updates if unmounted
+    let mounted = true;
 
     async function carregarPerfil() {
       try {
@@ -35,7 +39,7 @@ export function PerfilUsuarioProvider({ children }: { children: React.ReactNode 
 
         const { data: perfil, error } = await supabase
           .from("perfis_usuarios")
-          .select("funcao")
+          .select("funcao, setor")
           .eq("user_id", user.id)
           .single();
 
@@ -45,7 +49,9 @@ export function PerfilUsuarioProvider({ children }: { children: React.ReactNode 
           const funcaoAjustada = perfil.funcao?.trim().toLowerCase();
           setIsAdmin(funcaoAjustada === "admin");
           setIsVendedor(funcaoAjustada === "vendedor");
+          setIsOperador(funcaoAjustada === "operador");
           setIsDesativado(funcaoAjustada === "desativado");
+          setSetorDoOperador(funcaoAjustada === "operador" ? (perfil.setor || null) : null);
         }
       } catch (err) {
         console.error("Erro inesperado ao buscar perfil:", err);
@@ -60,8 +66,11 @@ export function PerfilUsuarioProvider({ children }: { children: React.ReactNode 
       if (!session && mounted) {
         setUserId(null);
         setIsAdmin(false);
-        setIsVendedor(true); // reset fallback
+        setIsVendedor(true);
+        setIsOperador(false);
         setIsDesativado(false);
+        setSetorDoOperador(null);
+        setLoadingPerfil(true);
       }
     });
 
@@ -72,7 +81,10 @@ export function PerfilUsuarioProvider({ children }: { children: React.ReactNode 
   }, []);
 
   return (
-    <PerfilContext.Provider value={{ isAdmin, isVendedor, isDesativado, userId, loadingPerfil }}>
+    <PerfilContext.Provider value={{
+      isAdmin, isVendedor, isOperador, isDesativado,
+      setorDoOperador, userId, loadingPerfil
+    }}>
       {children}
     </PerfilContext.Provider>
   );

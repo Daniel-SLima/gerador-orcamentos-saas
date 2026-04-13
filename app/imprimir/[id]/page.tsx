@@ -26,13 +26,15 @@ export default function ImprimirOrcamento() {
           return;
         }
 
-        // Verificar se é admin
+        // Verificar função do usuário
         const { data: perfilData } = await supabase
           .from("perfis_usuarios")
           .select("funcao")
           .eq("user_id", user.id)
           .single();
-        const isAdmin = perfilData?.funcao === "admin";
+        const funcao = perfilData?.funcao?.trim().toLowerCase();
+        const isAdmin = funcao === "admin";
+        const isOperador = funcao === "operador";
 
         // Buscar o orçamento
         let orcamentoQuery = supabase
@@ -45,7 +47,8 @@ export default function ImprimirOrcamento() {
           .eq("id", id);
 
         // C03 — Vendedor só pode ver seus próprios orçamentos
-        if (!isAdmin) {
+        // Admin e Operador podem ver qualquer orçamento (operadores precisam ver OP de qualquer vendedor)
+        if (!isAdmin && !isOperador) {
           orcamentoQuery = orcamentoQuery.eq("user_id", user.id);
         }
 

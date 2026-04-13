@@ -38,6 +38,66 @@ const aplicarMascaraTelefone = (valor: string) => {
   return v;
 };
 
+// ─── Validadores de CPF e CNPJ ──────────────────────────────────────────────
+
+const validarCPF = (cpf: string): boolean => {
+  const cpfLimpo = cpf.replace(/\D/g, '');
+  if (cpfLimpo.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(cpfLimpo)) return false;
+
+  let soma = 0;
+  for (let i = 0; i < 9; i++) soma += parseInt(cpfLimpo[i]) * (10 - i);
+  let resto = soma % 11;
+  if (resto < 2) resto = 0;
+  else resto = 11 - resto;
+  if (parseInt(cpfLimpo[9]) !== resto) return false;
+
+  soma = 0;
+  for (let i = 0; i < 10; i++) soma += parseInt(cpfLimpo[i]) * (11 - i);
+  resto = soma % 11;
+  if (resto < 2) resto = 0;
+  else resto = 11 - resto;
+  if (parseInt(cpfLimpo[10]) !== resto) return false;
+
+  return true;
+};
+
+const validarCNPJ = (cnpj: string): boolean => {
+  const cnpjLimpo = cnpj.replace(/\D/g, '');
+  if (cnpjLimpo.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(cnpjLimpo)) return false;
+
+  const pesos1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  const pesos2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+  let soma = 0;
+  for (let i = 0; i < 12; i++) soma += parseInt(cnpjLimpo[i]) * pesos1[i];
+  let resto = soma % 11;
+  resto = resto < 2 ? 0 : 11 - resto;
+  if (parseInt(cnpjLimpo[12]) !== resto) return false;
+
+  soma = 0;
+  for (let i = 0; i < 13; i++) soma += parseInt(cnpjLimpo[i]) * pesos2[i];
+  resto = soma % 11;
+  resto = resto < 2 ? 0 : 11 - resto;
+  if (parseInt(cnpjLimpo[13]) !== resto) return false;
+
+  return true;
+};
+
+const validarDocumento = (doc: string): { valido: boolean; tipo: string } => {
+  const limpo = doc.replace(/\D/g, '');
+  if (!limpo) return { valido: false, tipo: "" };
+  if (limpo.length === 11) return { valido: validarCPF(doc), tipo: "CPF" };
+  if (limpo.length === 14) return { valido: validarCNPJ(doc), tipo: "CNPJ" };
+  return { valido: false, tipo: limpo.length < 11 ? "CPF" : "CNPJ" };
+};
+
+const validarTelefone = (telefone: string): boolean => {
+  const telLimpo = telefone.replace(/\D/g, '');
+  return telLimpo.length >= 10 && telLimpo.length <= 11;
+};
+
 export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
@@ -201,6 +261,19 @@ export default function ClientesPage() {
   const salvarCliente = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+
+    // ─── Validações antes de salvar ───
+    const docValidacao = validarDocumento(cpfCnpj);
+    if (cpfCnpj && cpfCnpj.replace(/\D/g, '').length > 0 && !docValidacao.valido) {
+      showToast(`${docValidacao.tipo} inválido. Verifique os dígitos verificadores.`, "error");
+      setSaving(false);
+      return;
+    }
+    if (telefone && !validarTelefone(telefone)) {
+      showToast("Telefone inválido. Digite pelo menos 10 dígitos (com DDD).", "error");
+      setSaving(false);
+      return;
+    }
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
