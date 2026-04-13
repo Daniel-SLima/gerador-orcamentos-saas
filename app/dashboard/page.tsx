@@ -20,13 +20,10 @@ interface UltimoOrcamento {
   created_at: string;
   valor_total: number;
   status: string;
-  clientes: {
-    nome_razao_social: string;
-  };
-  vendedores?: {
-    nome: string;
-    email?: string;
-  } | null;
+  user_id: string;
+  endereco_obra?: string;
+  clientes: { nome_razao_social: string } | { nome_razao_social: string }[];
+  vendedores?: { nome: string; email?: string } | { nome: string; email?: string }[] | null;
 }
 
 export default function DashboardPage() {
@@ -99,7 +96,7 @@ export default function DashboardPage() {
         const vTotal = Number(orc.valor_total);
         
         // Ranking Vendedor
-        const nomeVend = orc.vendedores?.nome || "Administrador";
+        const nomeVend = (Array.isArray(orc.vendedores) ? orc.vendedores[0]?.nome : orc.vendedores?.nome) || "Administrador";
         const atualVend = mapVendedores.get(nomeVend) || { nome: nomeVend, total: 0, qtd: 0 };
         atualVend.total += vTotal;
         atualVend.qtd += 1;
@@ -136,6 +133,87 @@ export default function DashboardPage() {
 
   }, [tipoFiltro, mesSelecionado, diaSelecionado, todosOrcamentosBrutos]);
 
+  const formatarMoeda = (valor: number) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
+  };
+
+  const formatarData = (dataStr: string) => {
+    const data = new Date(dataStr);
+    data.setMinutes(data.getMinutes() + data.getTimezoneOffset());
+    return new Intl.DateTimeFormat('pt-BR').format(data);
+  };
+
+  const exportarCSVDashboard = async () => {
+    try {
+      // Busca TODOS os orçamentos com filtros aplicados (igual ao dashboard)
+      const { data: orcamentosCompletos, error } = await supabase
+        .from("orcamentos")
+        .select(`
+          id,
+          numero_orcamento,
+          data_emissao,
+          valor_total,
+          status,
+          endereco_obra,
+          vendedor_id,
+          user_id,
+          clientes ( nome_razao_social ),
+          vendedores ( nome )
+        `)
+        .order("numero_orcamento", { ascending: false });
+
+      if (error) throw error;
+
+      const orcamentosList = (orcamentosCompletos || []) as unknown as UltimoOrcamento[];
+
+      // Filtra igual ao dashboard (por período selecionado)
+      const orcamentosFiltrados = orcamentosList.filter(orc => {
+        if (tipoFiltro === "todos") return true;
+        const dataBase = (orc.data_emissao || "").split("T")[0];
+        if (tipoFiltro === "mes" && mesSelecionado) return dataBase.startsWith(mesSelecionado);
+        if (tipoFiltro === "dia" && diaSelecionado) return dataBase === diaSelecionado;
+        return true;
+      });
+
+      // Busca emails dos criadores
+      const userIds = orcamentosFiltrados.map(o => o.user_id);
+      const { data: perfis } = await supabase
+        .from("perfis_usuarios")
+        .select("user_id, email")
+        .in("user_id", userIds);
+
+      const emailPorUserId: Record<string, string> = {};
+      perfis?.forEach(p => { emailPorUserId[p.user_id] = p.email; });
+
+      // Monta CSV
+      const cabecalho = "Nº Orçamento;Data Emissão;Cliente;Valor Total;Status;Endereço Obra;Vendedor;Email Criador\n";
+      const linhas = orcamentosFiltrados.map(orc => {
+        const nomeCliente = Array.isArray(orc.clientes)
+          ? orc.clientes[0]?.nome_razao_social
+          : (orc.clientes as { nome_razao_social: string })?.nome_razao_social;
+        const nomeVendedor = Array.isArray(orc.vendedores)
+          ? orc.vendedores[0]?.nome
+          : (orc.vendedores as { nome: string })?.nome || "";
+        const email = emailPorUserId[orc.user_id] || "";
+        const data = orc.data_emissao ? formatarData(orc.data_emissao) : "";
+        const valor = formatarMoeda(Number(orc.valor_total)).replace("R$ ", "").replace(".", ",");
+
+        return `${orc.numero_orcamento};${data};${nomeCliente};${valor};${orc.status};${orc.endereco_obra || ""};${nomeVendedor};${email}`;
+      }).join("\n");
+
+      const csv = cabecalho + linhas;
+      const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `dashboard_orcamentos_${new Date().toISOString().slice(0,10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("Erro ao exportar CSV: " + (err as Error).message);
+    }
+  };
+
   const carregarDashboard = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -167,16 +245,6 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const formatarMoeda = (valor: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
-  };
-
-  const formatarData = (dataStr: string) => {
-    const data = new Date(dataStr);
-    data.setMinutes(data.getMinutes() + data.getTimezoneOffset());
-    return new Intl.DateTimeFormat('pt-BR').format(data);
   };
 
   if (loading) {
@@ -232,9 +300,19 @@ export default function DashboardPage() {
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
 
       {/* Cabeçalho */}
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Visão Geral da Empresa</h1>
-        <p className="text-gray-500 mt-1">Acompanhe o desempenho de todos os vendedores.</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Visão Geral da Empresa</h1>
+          <p className="text-gray-500 mt-1">Acompanhe o desempenho de todos os vendedores.</p>
+        </div>
+        <button
+          onClick={exportarCSVDashboard}
+          disabled={loading || ultimosOrcamentos.length === 0}
+          className="px-4 py-2 bg-green-600 text-white rounded-lg font-bold text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-wait flex items-center gap-2 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+          Exportar CSV
+        </button>
       </div>
 
       {/* FILTRO INTELIGENTE */}
@@ -363,7 +441,7 @@ export default function DashboardPage() {
                   <div className="flex justify-between items-start mb-2">
                     <span className="font-bold text-gray-900 text-base">#{String(orc.numero_orcamento).padStart(5, '0')}</span>
                     <span className="bg-orange-100 text-orange-700 text-[10px] font-bold px-2 py-1 rounded-md tracking-wide">
-                      Vend: {orc.vendedores?.nome || "Admin"}
+                      Vend: {Array.isArray(orc.vendedores) ? orc.vendedores[0]?.nome : orc.vendedores?.nome || "Admin"}
                     </span>
                   </div>
                   <p className="text-sm font-medium text-gray-800 truncate mb-4" title={Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : orc.clientes?.nome_razao_social}>

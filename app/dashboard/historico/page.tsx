@@ -16,12 +16,8 @@ interface Orcamento {
   endereco_obra?: string;
   contato_obra?: string;
   user_id: string;
-  clientes: {
-    nome_razao_social: string;
-  };
-  vendedores?: {
-    nome: string;
-  };
+  clientes: { nome_razao_social: string } | { nome_razao_social: string }[];
+  vendedores?: { nome: string } | { nome: string }[];
 }
 
 // 🚀 NOVA INTERFACE PARA ACABAR COM O ERRO DO 'ANY'
@@ -486,6 +482,7 @@ export default function HistoricoOrcamentosPage() {
           endereco_obra,
           vendedor_id,
           user_id,
+          created_at,
           clientes ( nome_razao_social ),
           vendedores ( nome )
         `)
@@ -493,8 +490,10 @@ export default function HistoricoOrcamentosPage() {
 
       if (error) throw error;
 
+      const orcamentosList = (orcamentosCompletos || []) as Orcamento[];
+
       // Busca emails dos criadores
-      const userIds = orcamentosCompletos.map(o => o.user_id);
+      const userIds = orcamentosList.map(o => o.user_id);
       const { data: perfis } = await supabase
         .from("perfis_usuarios")
         .select("user_id, email")
@@ -505,13 +504,13 @@ export default function HistoricoOrcamentosPage() {
 
       // Monta CSV
       const cabecalho = "Nº Orçamento;Data Emissão;Cliente;Valor Total;Status;Endereço Obra;Vendedor;Email Criador;Itens\n";
-      const linhas = orcamentosCompletos.map(orc => {
+      const linhas = orcamentosList.map(orc => {
         const nomeCliente = Array.isArray(orc.clientes)
           ? orc.clientes[0]?.nome_razao_social
-          : orc.clientes?.nome_razao_social;
+          : (orc.clientes as { nome_razao_social: string })?.nome_razao_social;
         const nomeVendedor = Array.isArray(orc.vendedores)
           ? orc.vendedores[0]?.nome
-          : orc.vendedores?.nome || "";
+          : (orc.vendedores as { nome: string })?.nome || "";
         const email = emailPorUserId[orc.user_id] || "";
         const data = orc.data_emissao ? formatarData(orc.data_emissao) : "";
         const valor = formatarMoeda(Number(orc.valor_total)).replace("R$ ", "").replace(".", ",");
@@ -652,11 +651,11 @@ export default function HistoricoOrcamentosPage() {
                     <div className="min-w-0 pr-4 flex-1">
                       <h3 className="font-bold text-gray-900 text-lg">#{String(orc.numero_orcamento).padStart(5, '0')}</h3>
                       <p className="text-sm font-semibold text-gray-700 mt-0.5 break-all">
-                        {Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : orc.clientes?.nome_razao_social}
+                        {Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : (orc.clientes as { nome_razao_social: string })?.nome_razao_social}
                       </p>
                       {isAdmin && (
                         <p className="text-[11px] text-gray-500 mt-1 uppercase font-bold tracking-wider break-all">
-                          Vendedor: {Array.isArray(orc.vendedores) ? orc.vendedores[0]?.nome : orc.vendedores?.nome || "Indefinido"}
+                          Vendedor: {Array.isArray(orc.vendedores) ? orc.vendedores[0]?.nome : (orc.vendedores as { nome: string })?.nome || "Indefinido"}
                         </p>
                       )}
                     </div>
@@ -749,10 +748,10 @@ export default function HistoricoOrcamentosPage() {
                       <td className="p-4 text-gray-900 font-bold">#{String(orc.numero_orcamento).padStart(5, '0')}</td>
                       <td className="p-4 text-gray-600">{formatarData(orc.data_emissao)}</td>
                       <td className="p-4 text-gray-800 font-medium">
-                        {Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : orc.clientes?.nome_razao_social}
+                        {Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : (orc.clientes as { nome_razao_social: string })?.nome_razao_social}
                         {isAdmin && (
                           <div className="text-xs text-gray-500 font-normal mt-1 border-t border-gray-100 pt-1">
-                            Vend: {Array.isArray(orc.vendedores) ? orc.vendedores[0]?.nome : orc.vendedores?.nome || "N/A"}
+                            Vend: {Array.isArray(orc.vendedores) ? orc.vendedores[0]?.nome : (orc.vendedores as { nome: string })?.nome || "N/A"}
                           </div>
                         )}
                       </td>
