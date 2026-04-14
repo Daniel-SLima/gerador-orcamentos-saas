@@ -428,9 +428,15 @@ export const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
           </View>
 
           {dados.itens?.map((item: ItemOrcamento, index: number) => {
-            const urlDaImagem = Array.isArray(item.produtos)
+            let urlDaImagem = Array.isArray(item.produtos)
               ? item.produtos[0]?.imagem_url
               : item.produtos?.imagem_url;
+
+            // Transforma URL do Cloudinary para JPEG on-the-fly para compatibilidade com PDF
+            if (urlDaImagem && urlDaImagem.includes("cloudinary.com") && urlDaImagem.match(/\.webp$/i)) {
+              urlDaImagem = urlDaImagem.replace(/\.webp$/i, ".jpg");
+            }
+
             return (
               <View style={styles.tableRow} key={index} wrap={false}>
                 <View style={styles.colIndex}>
@@ -571,12 +577,17 @@ export const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
       </Page>
 
       {/* Páginas de imagens anexas */}
-      {imagensAnexas.map((img, idx) => (
+      {imagensAnexas.map((img, idx) => {
+        let pdfImageUrl = img.file_url;
+        if (pdfImageUrl && pdfImageUrl.includes("cloudinary.com") && pdfImageUrl.match(/\.webp$/i)) {
+          pdfImageUrl = pdfImageUrl.replace(/\.webp$/i, ".jpg");
+        }
+        return (
         <Page key={`anexo-${idx}`} size="A4" style={styles.page}>
           {renderHeader(`ANEXO: ${img.file_name}`)}
           <View style={{ flex: 1, marginVertical: 10, alignItems: "center", justifyContent: "center" }}>
             <PDFImage
-              src={img.file_url}
+              src={pdfImageUrl}
               style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
             />
           </View>
@@ -587,7 +598,7 @@ export const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
             style={styles.pageNumber}
           />
         </Page>
-      ))}
+      )})}
     </Document>
   );
 };

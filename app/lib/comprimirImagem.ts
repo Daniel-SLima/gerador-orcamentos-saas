@@ -48,16 +48,16 @@ export async function comprimirImagem(
         (blob) => {
           if (!blob) return reject(new Error("Falha ao converter imagem"));
 
-          // Troca a extensao para .webp
+          // Troca a extensao para .jpg
           const nomeBase = arquivo.name.replace(/\.[^/.]+$/, "");
-          const novoArquivo = new File([blob], `${nomeBase}.webp`, {
-            type: "image/webp",
+          const novoArquivo = new File([blob], `${nomeBase}.jpg`, {
+            type: "image/jpeg",
             lastModified: Date.now(),
           });
 
           resolve(novoArquivo);
         },
-        "image/webp", // Converte direto para WebP (25-35% menor que JPEG)
+        "image/jpeg", // Converte direto para JPEG pois React-PDF não suporta WebP
         quality
       );
     };
