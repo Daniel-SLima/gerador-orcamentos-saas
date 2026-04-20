@@ -10,6 +10,7 @@ interface PerfilContextType {
   isDesativado: boolean;
   setorDoOperador: string | null;
   userId: string | null;
+  emailUsuario: string | null;
   loadingPerfil: boolean;
 }
 
@@ -22,6 +23,7 @@ export function PerfilUsuarioProvider({ children }: { children: React.ReactNode 
   const [isDesativado, setIsDesativado] = useState(false);
   const [setorDoOperador, setSetorDoOperador] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [emailUsuario, setEmailUsuario] = useState<string | null>(null);
   const [loadingPerfil, setLoadingPerfil] = useState(true);
 
   useEffect(() => {
@@ -36,6 +38,7 @@ export function PerfilUsuarioProvider({ children }: { children: React.ReactNode 
         }
 
         if (mounted) setUserId(user.id);
+        if (mounted) setEmailUsuario(user.email ?? null);
 
         const { data: perfil, error } = await supabase
           .from("perfis_usuarios")
@@ -70,6 +73,7 @@ export function PerfilUsuarioProvider({ children }: { children: React.ReactNode 
         setIsOperador(false);
         setIsDesativado(false);
         setSetorDoOperador(null);
+        setEmailUsuario(null);
         setLoadingPerfil(true);
       }
     });
@@ -83,7 +87,7 @@ export function PerfilUsuarioProvider({ children }: { children: React.ReactNode 
   return (
     <PerfilContext.Provider value={{
       isAdmin, isVendedor, isOperador, isDesativado,
-      setorDoOperador, userId, loadingPerfil
+      setorDoOperador, userId, emailUsuario, loadingPerfil
     }}>
       {children}
     </PerfilContext.Provider>

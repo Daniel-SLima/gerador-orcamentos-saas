@@ -89,12 +89,29 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, [router]);
 
+  useEffect(() => {
+    if (!loadingPerfil && !isCheckingAuth && isOperador) {
+      const rotasPermitidas = ["/dashboard/setor", "/dashboard/mudar-senha"];
+      const acessoPermitido = rotasPermitidas.some(rota => pathname.startsWith(rota));
+      if (!acessoPermitido) {
+        router.replace("/dashboard/setor");
+      }
+    }
+  }, [isOperador, pathname, loadingPerfil, isCheckingAuth, router]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.replace("/");
   };
 
-  const menuItems = [
+  // Operadores têm menu exclusivo e reduzido
+  const menuItemsOperador = [
+    { href: "/dashboard/setor", label: "Meu Setor", icon: "⚙️" },
+    { href: "/dashboard/mudar-senha", label: "Segurança", icon: "🔒" },
+  ];
+
+  // Menu completo para Admin e Vendedor
+  const menuItemsCompleto = [
     { href: "/dashboard", label: "Início", icon: "🏠" },
     ...(isAdmin ? [{ href: "/dashboard/perfil", label: "Minha Empresa", icon: "🏢" }] : []),
     { href: "/dashboard/clientes", label: "Clientes", icon: "👥" },
@@ -102,10 +119,11 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     { href: "/dashboard/orcamentos", label: "Orçamentos", icon: "📄" },
     { href: "/dashboard/historico", label: "Histórico", icon: "🕒" },
     ...(isAdmin ? [{ href: "/dashboard/producao", label: "Produção", icon: "🏭" }] : []),
-    ...(isOperador ? [{ href: "/dashboard/setor", label: "Meu Setor", icon: "⚙️" }] : []),
     ...(isAdmin ? [{ href: "/dashboard/usuarios", label: "Equipe", icon: "🛡️" }] : []),
-    { href: "/dashboard/mudar-senha", label: "Segurança", icon: "🔒" }
+    { href: "/dashboard/mudar-senha", label: "Segurança", icon: "🔒" },
   ];
+
+  const menuItems = isOperador ? menuItemsOperador : menuItemsCompleto;
 
   // Tela de transição integrada (espera tanto sessão local quanto perfil da nuvem estar pronto)
   if (isCheckingAuth || loadingPerfil) {
