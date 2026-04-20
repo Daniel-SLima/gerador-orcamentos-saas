@@ -91,19 +91,23 @@ export default function ProducaoPage() {
     return Math.round((somaProgresso / (op.itens_op.length * TOTAL_ETAPAS)) * 100);
   };
 
-  const getSetorAtualDominante = (op: OpCompleta): string => {
+  // Retorna o setor gargalo da OP — o mais antigo onde ainda há itens pendentes.
+  // A OP só "avança" no filtro quando TODOS os itens saíram do setor anterior.
+  const getSetorAtual = (op: OpCompleta): string => {
     if (!op.itens_op || op.itens_op.length === 0) return "aguardando";
-    const contagem: Record<string, number> = {};
-    op.itens_op.forEach(i => {
-      contagem[i.setor_atual] = (contagem[i.setor_atual] || 0) + 1;
-    });
-    return Object.entries(contagem).sort((a, b) => b[1] - a[1])[0]?.[0] || "aguardando";
+    const ativos = op.itens_op.filter(i => i.setor_atual !== "concluido");
+    if (ativos.length === 0) return "concluido";
+    return ativos.reduce((minSetor, item) => {
+      const posMin = POSICAO_SETOR[minSetor] ?? 0;
+      const posItem = POSICAO_SETOR[item.setor_atual] ?? 0;
+      return posItem < posMin ? item.setor_atual : minSetor;
+    }, ativos[0].setor_atual);
   };
 
   const opsFiltradas = ops.filter(op => {
     if (!mostrarConcluidas && op.status === "concluida") return false;
     if (filtroSetor !== "todos") {
-      const setor = getSetorAtualDominante(op);
+      const setor = getSetorAtual(op);
       if (filtroSetor === "aguardando") return setor === "aguardando" || setor === "metalurgia";
       if (setor !== filtroSetor) return false;
     }

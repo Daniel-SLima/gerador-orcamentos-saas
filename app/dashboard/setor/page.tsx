@@ -55,6 +55,20 @@ export default function SetorPage() {
   const [itensDaOp, setItensDaOp] = useState<ItemOP[]>([]);
   const [loading, setLoading] = useState(true);
   const [processando, setProcessando] = useState<string | null>(null);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const y = window.scrollY;
+      setScrolled(prev => {
+        if (prev && y < 70) return false;   // volta ao expandido só abaixo de 70px
+        if (!prev && y > 130) return true;  // colapsa só acima de 130px
+        return prev;                         // zona morta 70-130px: sem mudança
+      });
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   useEffect(() => {
     if (!loadingPerfil) {
@@ -364,70 +378,97 @@ export default function SetorPage() {
   const mostrarSeletor = isAdmin && !setorDoOperador;
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-gray-900 text-white relative">
+      <div id="scroll-sentinel" className="absolute top-0 left-0 w-full h-1" />
 
       {/* ===================== CABEÇALHO ===================== */}
-      <div className="bg-gray-800 border-b border-gray-700 p-4 sticky top-0 z-20">
-        <div className="max-w-3xl mx-auto">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h1 className="text-2xl font-black text-white">⚙️ Meu Setor</h1>
-              <p className="text-gray-400 text-sm">
-                {setorDoOperador || (isAdmin ? "Modo Admin" : "Sem setor definido")}
-              </p>
+      <div className="bg-gray-800 border-b border-gray-700 sticky top-0 z-20">
+
+        {/* MODO EXPANDIDO — visível no topo */}
+        {!scrolled && (
+          <div className="p-4">
+            <div className="max-w-3xl mx-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h1 className="text-2xl font-black text-white">⚙️ Meu Setor</h1>
+                {/* Seletor de setor para Admin */}
+                {isAdmin && (
+                  <select
+                    value={setorAtual}
+                    onChange={e => {
+                      setSetorAtual(e.target.value);
+                      setOpSelecionada(null);
+                      setItensDaOp([]);
+                    }}
+                    className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white font-bold text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    {SETORES.map(s => (
+                      <option key={s} value={s}>{SETORES_LABELS[s]}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Linha de filtro + botão de seleção de OP */}
+              <div className="flex items-center gap-3 flex-wrap">
+                {setorAtual && (
+                  <span className="px-3 py-1 bg-blue-600 rounded-full font-bold text-white text-sm">
+                    {SETORES_LABELS[setorAtual]}
+                  </span>
+                )}
+
+                {/* Botão de seleção de OP — mostra a OP atual ou convida a escolher */}
+                <button
+                  onClick={() => setModalAberto(true)}
+                  className="flex items-center gap-2 px-4 py-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-500 rounded-full text-sm font-bold text-white transition-colors"
+                >
+                  <span>📋</span>
+                  {opSelecionada
+                    ? `OP ${String(opSelecionada.numero_op).padStart(4, "0")} — ${opSelecionada.nome_cliente}`
+                    : "Selecionar OP"}
+                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {/* Botão Ver OP — aparece ao lado quando uma OP está selecionada */}
+                {opSelecionada && (
+                  <button
+                    onClick={() => window.open(`/imprimir/${opSelecionada.orcamento_id}?action=op`, "_blank")}
+                    className="flex items-center gap-2 px-4 py-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-500 rounded-full text-sm font-bold text-gray-200 transition-colors"
+                  >
+                    <span>📄</span>
+                    Ver OP
+                  </button>
+                )}
+              </div>
             </div>
-            {/* Seletor de setor para Admin */}
-            {isAdmin && (
-              <select
-                value={setorAtual}
-                onChange={e => {
-                  setSetorAtual(e.target.value);
-                  setOpSelecionada(null);
-                  setItensDaOp([]);
-                }}
-                className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white font-bold text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                {SETORES.map(s => (
-                  <option key={s} value={s}>{SETORES_LABELS[s]}</option>
-                ))}
-              </select>
-            )}
           </div>
+        )}
 
-          {/* Linha de filtro + botão de seleção de OP */}
-          <div className="flex items-center gap-3 flex-wrap">
-            {setorAtual && (
-              <span className="px-3 py-1 bg-blue-600 rounded-full font-bold text-white text-sm">
-                {SETORES_LABELS[setorAtual]}
-              </span>
-            )}
-
-            {/* Botão de seleção de OP — mostra a OP atual ou convida a escolher */}
-            <button
-              onClick={() => setModalAberto(true)}
-              className="flex items-center gap-2 px-4 py-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-500 rounded-full text-sm font-bold text-white transition-colors"
-            >
-              <span>📋</span>
-              {opSelecionada
-                ? `OP ${String(opSelecionada.numero_op).padStart(4, "0")} — ${opSelecionada.nome_cliente}`
-                : "Selecionar OP"}
-              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-
-            {/* Botão Ver OP — aparece ao lado quando uma OP está selecionada */}
-            {opSelecionada && (
+        {/* MODO COMPACTO — visível ao rolar */}
+        {scrolled && (
+          <div className="px-4 py-2.5">
+            <div className="max-w-3xl mx-auto flex items-center gap-2">
+              {setorAtual && (
+                <span className="px-2.5 py-1 bg-blue-600 rounded-full font-bold text-white text-xs shrink-0">
+                  {SETORES_LABELS[setorAtual]}
+                </span>
+              )}
+              {/* Nome da OP — clicar rola para o topo */}
               <button
-                onClick={() => window.open(`/imprimir/${opSelecionada.orcamento_id}?action=op`, "_blank")}
-                className="flex items-center gap-2 px-4 py-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-500 rounded-full text-sm font-bold text-gray-200 transition-colors"
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                className="flex-1 flex items-center gap-1.5 text-sm font-bold text-white min-w-0 text-left"
               >
-                <span>📄</span>
-                Ver OP
+                <span className="truncate">
+                  {opSelecionada
+                    ? `OP ${String(opSelecionada.numero_op).padStart(4, "0")} — ${opSelecionada.nome_cliente}`
+                    : "Selecionar OP"}
+                </span>
               </button>
-            )}
+            </div>
           </div>
-        </div>
+        )}
+
       </div>
 
       {/* ===================== MODAL DE SELEÇÃO DE OP ===================== */}

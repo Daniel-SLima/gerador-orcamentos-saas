@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find 'C:/Projetos/Projeto pra Benicio/gerador-orcamentos/app' -type f -name *.ts -o -name *.tsx)",
+      "Bash(xargs grep:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}

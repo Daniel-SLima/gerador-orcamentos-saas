@@ -50,6 +50,8 @@ export default function HistoricoOrcamentosPage() {
   const [tipoFiltro, setTipoFiltro] = useState("todos"); // 'todos', 'mes', 'dia'
   const [mesSelecionado, setMesSelecionado] = useState(new Date().toISOString().slice(0, 7));
   const [diaSelecionado, setDiaSelecionado] = useState(new Date().toISOString().slice(0, 10));
+  const [filtroStatus, setFiltroStatus] = useState("todos");
+  const [filtroVendedor, setFiltroVendedor] = useState("todos");
 
   // 🚀 ESTADOS DO MODAL DE ANEXOS
   const [modalAnexosAberto, setModalAnexosAberto] = useState(false);
@@ -611,11 +613,30 @@ export default function HistoricoOrcamentosPage() {
   const limparFiltros = () => {
     setTermoBusca("");
     setTipoFiltro("todos");
+    setFiltroStatus("todos");
+    setFiltroVendedor("todos");
   };
+
+  // Lista deduplificada de vendedores para o filtro
+  const vendedoresUnicos = isAdmin
+    ? Array.from(
+        new Map(
+          orcamentos
+            .map(orc => {
+              const nome = Array.isArray(orc.vendedores)
+                ? orc.vendedores[0]?.nome
+                : (orc.vendedores as { nome: string })?.nome;
+              return nome ? [nome, nome] : null;
+            })
+            .filter(Boolean) as [string, string][]
+        ).values()
+      ).sort()
+    : [];
 
   const orcamentosFiltrados = orcamentos.filter((orc) => {
     const termo = termoBusca.toLowerCase();
     const nomeCliente = (Array.isArray(orc.clientes) ? orc.clientes[0]?.nome_razao_social : orc.clientes?.nome_razao_social) || "";
+    const nomeVendedor = Array.isArray(orc.vendedores) ? orc.vendedores[0]?.nome : (orc.vendedores as { nome: string })?.nome || "";
 
     const bateBusca =
       String(orc.numero_orcamento).includes(termo) ||
@@ -631,7 +652,10 @@ export default function HistoricoOrcamentosPage() {
       bateData = dataBase === diaSelecionado;
     }
 
-    return bateBusca && bateData;
+    const bateStatus = filtroStatus === "todos" || orc.status === filtroStatus;
+    const bateVendedor = filtroVendedor === "todos" || nomeVendedor === filtroVendedor;
+
+    return bateBusca && bateData && bateStatus && bateVendedor;
   });
 
   return (
@@ -656,18 +680,43 @@ export default function HistoricoOrcamentosPage() {
         </div>
       </div>
 
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row gap-4 md:items-end">
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row gap-4 md:items-end flex-wrap">
         <div className="w-full md:flex-1">
           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Buscar</label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             </div>
-            <input type="text" placeholder="Nº, Cliente ou Status..." value={termoBusca} onChange={(e) => setTermoBusca(e.target.value)} className="w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 transition-all" />
+            <input type="text" placeholder="Nº ou Cliente..." value={termoBusca} onChange={(e) => setTermoBusca(e.target.value)} className="w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 transition-all" />
           </div>
         </div>
 
-        <div className="w-full md:w-48">
+        {/* Filtro por Status */}
+        <div className="w-full md:w-44">
+          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Status</label>
+          <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium transition-all">
+            <option value="todos">Todos os Status</option>
+            <option value="Rascunho">📝 Rascunho</option>
+            <option value="Aberto">📬 Aberto</option>
+            <option value="Aprovado">✅ Aprovado</option>
+            <option value="Recusado">❌ Recusado</option>
+          </select>
+        </div>
+
+        {/* Filtro por Vendedor — somente admin */}
+        {isAdmin && vendedoresUnicos.length > 0 && (
+          <div className="w-full md:w-44">
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Vendedor</label>
+            <select value={filtroVendedor} onChange={(e) => setFiltroVendedor(e.target.value)} className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium transition-all">
+              <option value="todos">Todos os Vendedores</option>
+              {vendedoresUnicos.map(nome => (
+                <option key={nome} value={nome}>{nome}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div className="w-full md:w-44">
           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Período</label>
           <select value={tipoFiltro} onChange={(e) => setTipoFiltro(e.target.value)} className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium transition-all">
             <option value="todos">Todo o período</option>
@@ -690,7 +739,7 @@ export default function HistoricoOrcamentosPage() {
           </div>
         )}
 
-        {(termoBusca || tipoFiltro !== "todos") && (
+        {(termoBusca || tipoFiltro !== "todos" || filtroStatus !== "todos" || filtroVendedor !== "todos") && (
           <button onClick={limparFiltros} className="w-full md:w-auto px-4 py-2.5 bg-red-50 text-red-600 hover:bg-red-100 font-bold rounded-lg transition-colors border border-red-100 flex items-center justify-center gap-2">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg> Limpar
           </button>
