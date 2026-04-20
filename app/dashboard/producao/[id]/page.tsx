@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
 import { usePerfilUsuario } from "../../../hooks/usePerfilUsuario";
-import { useAlert, AlertModal } from "../../../components/AlertModal";
+import { useAlert, useConfirm, AlertModal, ConfirmModal } from "../../../components/AlertModal";
 
 interface RegistroChecklist {
   id: string;
@@ -67,12 +67,14 @@ export default function ProducaoDetalhePage() {
   const router = useRouter();
   const { isAdmin, loadingPerfil } = usePerfilUsuario();
   const { showAlert, alertProps } = useAlert();
+  const { showConfirm, confirmProps } = useConfirm();
   const [op, setOp] = useState<OpCompleta | null>(null);
   const [loading, setLoading] = useState(true);
   const [itemExpandido, setItemExpandido] = useState<string | null>(null);
   const [editandoObs, setEditandoObs] = useState(false);
   const [obsTexto, setObsTexto] = useState("");
   const [salvandoObs, setSalvandoObs] = useState(false);
+  const [cancelando, setCancelando] = useState(false);
 
   const id = params.id as string;
 
@@ -134,6 +136,42 @@ export default function ProducaoDetalhePage() {
       showAlert("Erro ao salvar observações.", { type: "error", title: "Erro" });
     } finally {
       setSalvandoObs(false);
+    }
+  };
+
+  const cancelarOP = async () => {
+    const confirmado = await showConfirm(
+      `Tem certeza que deseja CANCELAR a OP #${String(op?.numero_op).padStart(4, "0")}? Esta ação irá remover a Ordem de Produção e todos os itens em andamento. Os operadores pararão de vê-la imediatamente. Esta ação não pode ser desfeita.`,
+      { type: "error", title: "Cancelar Ordem de Produção", confirmLabel: "Sim, cancelar OP", cancelLabel: "Voltar" }
+    );
+    if (!confirmado) return;
+
+    setCancelando(true);
+    try {
+      // 1. Remove registros de checklist associados aos itens da OP
+      const itemIds = op?.itens_op.map(i => i.id) || [];
+      if (itemIds.length > 0) {
+        await supabase.from("registros_checklist").delete().in("item_op_id", itemIds);
+      }
+
+      // 2. Remove os itens da OP
+      const { error: erroItens } = await supabase
+        .from("itens_op")
+        .delete()
+        .eq("op_id", id);
+      if (erroItens) throw erroItens;
+
+      // 3. Remove a própria OP
+      const { error: erroOp } = await supabase
+        .from("ordens_producao")
+        .delete()
+        .eq("id", id);
+      if (erroOp) throw erroOp;
+
+      router.push("/dashboard/producao");
+    } catch (err) {
+      showAlert("Erro ao cancelar OP: " + (err as Error).message, { type: "error", title: "Erro" });
+      setCancelando(false);
     }
   };
 
@@ -208,6 +246,21 @@ export default function ProducaoDetalhePage() {
           <p className="text-gray-500 text-sm">{cliente} — Orçamento #{op.orcamentos?.numero_orcamento}</p>
           <p className="text-gray-400 text-xs mt-0.5">Criada em {new Date(op.created_at).toLocaleDateString("pt-BR")}</p>
         </div>
+        {/* Botão Cancelar OP — apenas para admin e se OP não concluída */}
+        {op.status !== "concluida" && (
+          <button
+            onClick={cancelarOP}
+            disabled={cancelando}
+            className="flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-200 text-red-700 font-bold text-sm rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-wait"
+          >
+            {cancelando ? (
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            )}
+            {cancelando ? "Cancelando..." : "Cancelar OP"}
+          </button>
+        )}
       </div>
 
       {/* OP Sem Itens */}
@@ -375,6 +428,7 @@ export default function ProducaoDetalhePage() {
       </div>
 
       <AlertModal {...alertProps} />
+      <ConfirmModal {...confirmProps} />
     </div>
   );
 }

@@ -449,6 +449,48 @@ export default function HistoricoOrcamentosPage() {
     }
   };
 
+  // 🚀 FUNÇÃO PARA CANCELAR A OP VINCULADA A UM ORÇAMENTO (admin only)
+  const cancelarOP = async (orcamentoId: string, numeroOrcamento: number) => {
+    setMenuAbertoId(null);
+
+    // Verifica se existe OP para este orçamento
+    const { data: opExistente } = await supabase
+      .from("ordens_producao")
+      .select("id, numero_op, itens_op(id)")
+      .eq("orcamento_id", orcamentoId)
+      .maybeSingle();
+
+    if (!opExistente) {
+      showAlert("Este orçamento não possui uma Ordem de Produção gerada.", { type: "warning", title: "Sem OP" });
+      return;
+    }
+
+    const confirmado = await showConfirm(
+      `Tem certeza que deseja CANCELAR a OP #${String(opExistente.numero_op).padStart(4, "0")} vinculada ao Orçamento #${String(numeroOrcamento).padStart(5, "0")}? Os operadores pararão de vê-la imediatamente. Esta ação não pode ser desfeita.`,
+      { type: "error", title: "Cancelar Ordem de Produção", confirmLabel: "Sim, cancelar OP", cancelLabel: "Voltar" }
+    );
+    if (!confirmado) return;
+
+    try {
+      // 1. Remove registros de checklist dos itens
+      const itemIds = (opExistente.itens_op as { id: string }[]).map(i => i.id);
+      if (itemIds.length > 0) {
+        await supabase.from("registros_checklist").delete().in("item_op_id", itemIds);
+      }
+
+      // 2. Remove os itens da OP
+      await supabase.from("itens_op").delete().eq("op_id", opExistente.id);
+
+      // 3. Remove a própria OP
+      const { error } = await supabase.from("ordens_producao").delete().eq("id", opExistente.id);
+      if (error) throw error;
+
+      showAlert(`OP #${String(opExistente.numero_op).padStart(4, "0")} cancelada com sucesso.`, { type: "success", title: "OP Cancelada" });
+    } catch (err) {
+      showAlert("Erro ao cancelar OP: " + (err as Error).message, { type: "error", title: "Erro" });
+    }
+  };
+
   // 🚀 FUNÇÃO PARA ABRIR O MODAL E BUSCAR OS ANEXOS NO BANCO (item 1)
   const verAnexos = async (orcamentoId: string) => {
     setMenuAbertoId(null);
@@ -696,6 +738,11 @@ export default function HistoricoOrcamentosPage() {
                             <button onClick={(e) => { e.stopPropagation(); abrirModalEditarDadosOP(orc); }} className="px-4 py-2.5 text-sm text-left font-medium text-amber-700 hover:bg-amber-50 flex items-center gap-2">
                               ✏️ Editar Dados da O.P.
                             </button>
+                            {isAdmin && (
+                              <button onClick={(e) => { e.stopPropagation(); cancelarOP(orc.id, orc.numero_orcamento); }} className="px-4 py-2.5 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2">
+                                ❌ Cancelar O.P.
+                              </button>
+                            )}
                           </>
                         )}
                         <button onClick={(e) => { e.stopPropagation(); visualizarPDF(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2">
@@ -812,6 +859,11 @@ export default function HistoricoOrcamentosPage() {
                                 <button onClick={(e) => { e.stopPropagation(); abrirModalEditarDadosOP(orc); }} className="px-4 py-2.5 text-sm text-left font-medium text-amber-700 hover:bg-amber-50 flex items-center gap-2">
                                   ✏️ Editar Dados da O.P.
                                 </button>
+                                {isAdmin && (
+                                  <button onClick={(e) => { e.stopPropagation(); cancelarOP(orc.id, orc.numero_orcamento); }} className="px-4 py-2.5 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2">
+                                    ❌ Cancelar O.P.
+                                  </button>
+                                )}
                               </>
                             )}
                             <button onClick={(e) => { e.stopPropagation(); visualizarPDF(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2">
