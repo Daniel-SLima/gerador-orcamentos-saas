@@ -75,6 +75,7 @@ export default function HistoricoOrcamentosPage() {
   const [opEnderecoNumero, setOpEnderecoNumero] = useState("");
   const [opEnderecoBairro, setOpEnderecoBairro] = useState("");
   const [opEnderecoCidade, setOpEnderecoCidade] = useState("");
+  const [opEnderecoCep, setOpEnderecoCep] = useState("");
   const [opContatoNome, setOpContatoNome] = useState("");
   const [opContatoTelefone, setOpContatoTelefone] = useState("");
   const [salvandoOp, setSalvandoOp] = useState(false);
@@ -82,6 +83,17 @@ export default function HistoricoOrcamentosPage() {
   useEffect(() => {
     if (!loadingPerfil) {
       carregarOrcamentos(0);
+
+      const channel = supabase
+        .channel("historico_status")
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "orcamentos" },
+          () => { carregarOrcamentos(0); }
+        )
+        .subscribe();
+
+      return () => { supabase.removeChannel(channel); };
     }
   }, [loadingPerfil]);
 
@@ -97,6 +109,7 @@ export default function HistoricoOrcamentosPage() {
         .from("orcamentos")
         .select(`
           id,
+          user_id,
           numero_orcamento,
           data_emissao,
           valor_total,
@@ -245,13 +258,20 @@ export default function HistoricoOrcamentosPage() {
     }
   };
 
+  const aplicarMascaraCep = (valor: string) => {
+    let v = valor.replace(/\D/g, '');
+    if (v.length > 8) v = v.slice(0, 8);
+    if (v.length > 5) v = v.replace(/(\d{5})(\d)/, '$1-$2');
+    return v;
+  };
+
   const iniciarModalOP = (orc: Orcamento) => {
     setModoEdicaoOp(false);
     setOrcamentoOpSelecionado(orc.id);
     // Pré-preencher com dados já existentes no orçamento
     const endExistente = orc.endereco_obra || "";
     const contExistente = orc.contato_obra || "";
-    // Tenta extrair os campos do endereço salvo (Rua, Nº - Bairro - Cidade)
+    // Tenta extrair os campos do endereço salvo (Rua, Nº - Bairro - Cidade - CEP)
     const partesEnd = endExistente.split(" - ");
     if (partesEnd.length >= 1) {
       const ruaNum = partesEnd[0].split(",");
@@ -260,6 +280,7 @@ export default function HistoricoOrcamentosPage() {
     }
     setOpEnderecoBairro(partesEnd[1]?.trim() || "");
     setOpEnderecoCidade(partesEnd[2]?.trim() || "");
+    setOpEnderecoCep(partesEnd[3]?.trim() || "");
     // Tenta extrair contato salvo (Nome - Telefone)
     const partesCont = contExistente.split(" - ");
     setOpContatoNome(partesCont[0]?.trim() || "");
@@ -293,11 +314,12 @@ export default function HistoricoOrcamentosPage() {
     setSalvandoOp(true);
 
     let enderecoCombinado = "";
-    if (opEnderecoRua || opEnderecoBairro || opEnderecoCidade) {
+    if (opEnderecoRua || opEnderecoBairro || opEnderecoCidade || opEnderecoCep) {
       const partesEnd = [];
       if (opEnderecoRua) partesEnd.push(opEnderecoRua + (opEnderecoNumero ? `, ${opEnderecoNumero}` : ""));
       if (opEnderecoBairro) partesEnd.push(opEnderecoBairro);
       if (opEnderecoCidade) partesEnd.push(opEnderecoCidade);
+      if (opEnderecoCep) partesEnd.push(opEnderecoCep);
       enderecoCombinado = partesEnd.join(" - ");
     }
 
@@ -720,8 +742,8 @@ export default function HistoricoOrcamentosPage() {
                       >
                         <option value="Rascunho">Rascunho</option>
                         <option value="Aberto">Aberto</option>
-                        {isAdmin && <option value="Aprovado">Aprovado</option>}
-                        {isAdmin && <option value="Recusado">Recusado</option>}
+                        <option value="Aprovado" disabled={!isAdmin}>Aprovado</option>
+                        <option value="Recusado" disabled={!isAdmin}>Recusado</option>
                       </select>
                     </div>
                     <p className="font-black text-green-600 text-lg">{formatarMoeda(orc.valor_total)}</p>
@@ -769,8 +791,8 @@ export default function HistoricoOrcamentosPage() {
                         >
                           <option value="Rascunho">Rascunho</option>
                           <option value="Aberto">Aberto</option>
-                          {isAdmin && <option value="Aprovado">Aprovado</option>}
-                          {isAdmin && <option value="Recusado">Recusado</option>}
+                          <option value="Aprovado" disabled={!isAdmin}>Aprovado</option>
+                          <option value="Recusado" disabled={!isAdmin}>Recusado</option>
                         </select>
                       </td>
                       <td className="p-4 text-green-600 font-bold">{formatarMoeda(orc.valor_total)}</td>
@@ -945,6 +967,12 @@ export default function HistoricoOrcamentosPage() {
                   <div>
                     <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Cidade / UF</label>
                     <input type="text" value={opEnderecoCidade} onChange={e => setOpEnderecoCidade(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">CEP</label>
+                    <input type="text" value={opEnderecoCep} onChange={e => setOpEnderecoCep(aplicarMascaraCep(e.target.value))} placeholder="00000-000" className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium" />
                   </div>
                 </div>
               </div>
