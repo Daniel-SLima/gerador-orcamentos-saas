@@ -72,6 +72,7 @@ function FormularioOrcamento() {
   const [formaPagamento, setFormaPagamento] = useState("");
   const [validadeProposta, setValidadeProposta] = useState("");
   const [observacoes, setObservacoes] = useState("");
+  const [isAprovado, setIsAprovado] = useState(false);
 
 
 
@@ -141,6 +142,10 @@ function FormularioOrcamento() {
           setFormaPagamento(orcData.forma_pagamento || "");
           setValidadeProposta(orcData.validade_proposta || "");
           setObservacoes(orcData.observacoes || "");
+
+          if (orcData.status === "Aprovado") {
+            setIsAprovado(true);
+          }
 
           if (orcData.data_emissao) {
             setDataEmissao(orcData.data_emissao.split('T')[0]);
@@ -303,6 +308,10 @@ function FormularioOrcamento() {
   const valorTotalOrcamento = itens.reduce((acc, item) => acc + item.subtotal, 0);
 
   const gerarOuAtualizarOrcamento = async () => {
+    if (isAprovado && editId) {
+      showAlert("Não é possível editar um orçamento já aprovado.", { type: "warning", title: "Edição Bloqueada" });
+      return;
+    }
     if (!dataEmissao) { showAlert("Por favor, selecione a Data de Emissão.", { type: "warning", title: "Campo obrigatório" }); return; }
     if (!clienteId) { showAlert("Por favor, selecione um Cliente.", { type: "warning", title: "Campo obrigatório" }); return; }
     if (itens.length === 0) { showAlert("Adicione pelo menos um produto ao orçamento.", { type: "warning", title: "Orçamento vazio" }); return; }
@@ -463,9 +472,16 @@ function FormularioOrcamento() {
         <h1 className="text-2xl font-bold text-gray-900 mb-1">
           {editId ? "✏️ Editando Orçamento" : cloneId ? "📋 Duplicando Orçamento" : "Novo Orçamento"}
         </h1>
-        <p className="text-gray-500 text-sm">
-          {editId ? "Altere os dados abaixo e clique em salvar para atualizar o PDF." : "Preencha os dados abaixo para gerar um novo documento."}
-        </p>
+        {isAprovado ? (
+          <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg mt-4 inline-block w-full">
+            <p className="text-amber-700 font-bold">⚠️ Este orçamento já foi aprovado.</p>
+            <p className="text-amber-600 text-sm">A edição está bloqueada para manter a integridade dos dados originais.</p>
+          </div>
+        ) : (
+          <p className="text-gray-500 text-sm">
+            {editId ? "Altere os dados abaixo e clique em salvar para atualizar o PDF." : "Preencha os dados abaixo para gerar um novo documento."}
+          </p>
+        )}
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-12 gap-6">

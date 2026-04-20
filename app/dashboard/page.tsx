@@ -32,6 +32,26 @@ export default function DashboardPage() {
   const [todosOrcamentosBrutos, setTodosOrcamentosBrutos] = useState<UltimoOrcamento[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Dashboard do Vendedor
+  const [resumoVendedor, setResumoVendedor] = useState({
+    valorAberto: 0,
+    valorAprovado: 0,
+    qtdAberto: 0,
+    qtdAprovado: 0,
+    qtdRascunho: 0,
+    qtdRecusado: 0,
+  });
+  const [orcamentosAguardando, setOrcamentosAguardando] = useState<UltimoOrcamento[]>([]);
+  const [orcamentosAprovados, setOrcamentosAprovados] = useState<UltimoOrcamento[]>([]);
+  const [opsVendedor, setOpsVendedor] = useState<{
+    id: string;
+    numero_op: number;
+    status: string;
+    orcamento_id: string;
+    cliente_nome: string;
+  }[]>([]);
+  const [graficoVendedor, setGraficoVendedor] = useState<{mes: string, aprovados: number, abertos: number}[]>([]);
+
   // 🚀 ESTADOS RANKINGS (NOVO)
   const [rankingVendedores, setRankingVendedores] = useState<{nome: string, total: number, qtd: number}[]>([]);
   const [rankingClientes, setRankingClientes] = useState<{nome: string, total: number, qtd: number}[]>([]);
@@ -42,13 +62,21 @@ export default function DashboardPage() {
   const [mesSelecionado, setMesSelecionado] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [diaSelecionado, setDiaSelecionado] = useState(new Date().toISOString().slice(0, 10)); // YYYY-MM-DD
 
-  const { isAdmin, loadingPerfil } = usePerfilUsuario();
+  const { isAdmin, emailUsuario, loadingPerfil } = usePerfilUsuario();
+
+  // Extrai o nome de exibição a partir do e-mail (tudo antes do @)
+  const nomeExibicao = emailUsuario ? emailUsuario.split("@")[0] : null;
 
   useEffect(() => {
     if (!loadingPerfil) {
-      carregarDashboard();
+      if (isAdmin) {
+        carregarDashboard();
+      } else {
+        // Vendedor carrega seu próprio dashboard
+        carregarDashboardVendedor().finally(() => setLoading(false));
+      }
     }
-  }, [loadingPerfil]);
+  }, [loadingPerfil, isAdmin]);
 
   // 🚀 RECALCULA TUDO AUTOMATICAMENTE QUANDO O FILTRO MUDA
   useEffect(() => {
@@ -214,6 +242,94 @@ export default function DashboardPage() {
     }
   };
 
+  const carregarDashboardVendedor = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // 1. Busca todos os orçamentos do vendedor com dados de cliente
+      const { data: orcs } = await supabase
+        .from("orcamentos")
+        .select(`
+          id, numero_orcamento, data_emissao, created_at, valor_total, status,
+          clientes ( nome_razao_social ),
+          vendedores ( nome )
+        `)
+        .eq("user_id", user.id)
+        .order("numero_orcamento", { ascending: false });
+
+      const lista = (orcs || []) as unknown as UltimoOrcamento[];
+
+      // 2. Separa por status
+      const abertos = lista.filter(o => o.status === "Aberto");
+      const aprovados = lista.filter(o => o.status === "Aprovado");
+      const rascunhos = lista.filter(o => o.status === "Rascunho");
+      const recusados = lista.filter(o => o.status === "Recusado");
+
+      setResumoVendedor({
+        valorAberto: abertos.reduce((s, o) => s + Number(o.valor_total), 0),
+        valorAprovado: aprovados.reduce((s, o) => s + Number(o.valor_total), 0),
+        qtdAberto: abertos.length,
+        qtdAprovado: aprovados.length,
+        qtdRascunho: rascunhos.length,
+        qtdRecusado: recusados.length,
+      });
+
+      // 3. Orçamentos aguardando aprovação (Aberto) — últimos 5
+      setOrcamentosAguardando(abertos.slice(0, 5));
+
+      // 4. Orçamentos aprovados — últimos 5
+      setOrcamentosAprovados(aprovados.slice(0, 5));
+
+      // 5. Busca OPs vinculadas aos orçamentos aprovados deste vendedor
+      const idsAprovados = aprovados.map(o => o.id);
+      if (idsAprovados.length > 0) {
+        const { data: ops } = await supabase
+          .from("ordens_producao")
+          .select("id, numero_op, status, orcamento_id")
+          .in("orcamento_id", idsAprovados)
+          .order("numero_op", { ascending: false });
+
+        if (ops) {
+          const opsComCliente = ops.map(op => {
+            const orc = aprovados.find(o => o.id === op.orcamento_id);
+            const clienteObj = orc?.clientes;
+            const nomeCliente = Array.isArray(clienteObj)
+              ? clienteObj[0]?.nome_razao_social
+              : clienteObj?.nome_razao_social;
+            return {
+              id: op.id,
+              numero_op: op.numero_op,
+              status: op.status,
+              orcamento_id: op.orcamento_id,
+              cliente_nome: nomeCliente || "—",
+            };
+          });
+          setOpsVendedor(opsComCliente);
+        }
+      }
+
+      // 6. Gráfico dos últimos 6 meses (orçamentos do vendedor)
+      const agora = new Date();
+      const mesesData: {mes: string, aprovados: number, abertos: number}[] = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(agora.getFullYear(), agora.getMonth() - i, 1);
+        const chave = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+        const orcsMes = lista.filter(o => (o.data_emissao || o.created_at || '').slice(0, 7) === chave);
+        mesesData.push({
+          mes: label,
+          aprovados: orcsMes.filter(o => o.status === 'Aprovado').length,
+          abertos: orcsMes.filter(o => o.status === 'Aberto').length,
+        });
+      }
+      setGraficoVendedor(mesesData);
+
+    } catch (error) {
+      console.error("Erro ao carregar dashboard vendedor:", error);
+    }
+  };
+
   const carregarDashboard = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -259,33 +375,221 @@ export default function DashboardPage() {
   // 👔 VISÃO DO VENDEDOR (Simplificada)
   // =========================================================================
   if (!isAdmin) {
+    const maxGrafico = Math.max(...graficoVendedor.map(m => m.aprovados + m.abertos), 1);
+
+    // Labels de status de OP em português
+    const statusOPLabel: Record<string, {label: string, cor: string}> = {
+      em_producao:  { label: "Em Produção",  cor: "text-blue-400"  },
+      concluida:    { label: "Concluída",    cor: "text-green-400" },
+      cancelada:    { label: "Cancelada",    cor: "text-red-400"   },
+    };
+
     return (
-      <div className="p-4 md:p-8 max-w-7xl mx-auto flex flex-col items-center justify-center min-h-[80vh]">
-        <div className="bg-white p-10 md:p-16 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center max-w-2xl w-full animate-fade-in">
-          
-          <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-6 shadow-inner">
-            <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
+      <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
+
+        {/* Saudação */}
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+            Olá, {nomeExibicao || "vendedor"}! 👋
+          </h1>
+          <p className="text-gray-500 mt-1">Aqui está um resumo do seu desempenho.</p>
+        </div>
+
+        {/* Cards de resumo */}
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+
+          {/* Valor Aberto */}
+          <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-5 text-white col-span-2 md:col-span-1">
+            <p className="text-blue-100 text-xs font-bold uppercase tracking-wider mb-1">Em Aberto</p>
+            <h3 className="text-2xl font-black">{formatarMoeda(resumoVendedor.valorAberto)}</h3>
+            <p className="text-blue-200 text-xs mt-1">{resumoVendedor.qtdAberto} orçamento(s)</p>
           </div>
 
-          <h1 className="text-3xl md:text-4xl font-black text-gray-900 mb-3 tracking-tight">
-            Seja Bem-vindo(a)!
-          </h1>
-          
-          <p className="text-gray-500 text-lg mb-10 max-w-md leading-relaxed">
-            Aqui você pode gerenciar seus clientes e gerar novos orçamentos de forma rápida e profissional.
-          </p>
+          {/* Valor Aprovado */}
+          <div className="bg-gradient-to-br from-green-600 to-green-800 rounded-2xl p-5 text-white col-span-2 md:col-span-1">
+            <p className="text-green-100 text-xs font-bold uppercase tracking-wider mb-1">Aprovado</p>
+            <h3 className="text-2xl font-black">{formatarMoeda(resumoVendedor.valorAprovado)}</h3>
+            <p className="text-green-200 text-xs mt-1">{resumoVendedor.qtdAprovado} orçamento(s)</p>
+          </div>
 
-          <Link 
-            href="/dashboard/orcamentos" 
-            className="group relative inline-flex items-center justify-center gap-3 px-8 py-4 font-bold text-white bg-blue-600 rounded-xl overflow-hidden transition-all hover:bg-blue-700 hover:scale-105 hover:shadow-xl hover:shadow-blue-200/50 focus:outline-none focus:ring-4 focus:ring-blue-300"
-          >
-            <svg className="w-6 h-6 transition-transform group-hover:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4"></path></svg>
-            <span>Criar Novo Orçamento</span>
-          </Link>
+          {/* Rascunhos */}
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-yellow-100">
+            <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">Rascunhos</p>
+            <h3 className="text-2xl font-black text-yellow-600">{resumoVendedor.qtdRascunho}</h3>
+          </div>
 
+          {/* Recusados */}
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-red-100">
+            <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">Recusados</p>
+            <h3 className="text-2xl font-black text-red-400">{resumoVendedor.qtdRecusado}</h3>
+          </div>
         </div>
+
+        {/* Área central: Gráfico + Botão criar */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+
+          {/* Gráfico de atividade — últimos 6 meses */}
+          <div className="md:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-lg">📊</span>
+              <div>
+                <h2 className="font-bold text-gray-800 text-sm">Meus Orçamentos por Mês</h2>
+                <p className="text-xs text-gray-400">Últimos 6 meses</p>
+              </div>
+            </div>
+            <div className="flex items-end gap-2 h-28">
+              {graficoVendedor.map((m, i) => {
+                const totalMes = m.aprovados + m.abertos;
+                const alturaPct = totalMes === 0 ? 0 : Math.round((totalMes / maxGrafico) * 100);
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                    <span className="text-xs font-bold text-gray-500">{totalMes > 0 ? totalMes : ""}</span>
+                    <div className="w-full flex flex-col justify-end rounded-t-lg overflow-hidden bg-gray-100" style={{ height: "80px" }}>
+                      <div
+                        className="w-full bg-blue-500 rounded-t-lg transition-all duration-500"
+                        style={{ height: `${alturaPct}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-gray-400 text-center leading-tight">{m.mes}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex gap-4 mt-3 text-xs text-gray-400">
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-500 inline-block"></span>Total de orçamentos</span>
+            </div>
+          </div>
+
+          {/* Atalho rápido */}
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center gap-4">
+            <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-800">Novo Orçamento</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Crie um orçamento agora</p>
+            </div>
+            <Link
+              href="/dashboard/orcamentos"
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors text-sm"
+            >
+              Criar Agora
+            </Link>
+          </div>
+        </div>
+
+        {/* Orçamentos aguardando aprovação */}
+        {orcamentosAguardando.length > 0 && (
+          <div className="bg-orange-50/50 border-2 border-orange-200 rounded-2xl overflow-hidden">
+            <div className="p-5 border-b border-orange-100 flex justify-between items-center bg-white/50">
+              <div className="flex items-center gap-3">
+                <div className="bg-orange-100 text-orange-600 p-2 rounded-xl">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">Aguardando Aprovação</h2>
+                  <p className="text-xs text-gray-500">{orcamentosAguardando.length} orçamento(s) enviado(s)</p>
+                </div>
+              </div>
+              <Link href="/dashboard/historico" className="text-xs font-bold text-orange-600 hover:underline">
+                Ver todos →
+              </Link>
+            </div>
+            <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+              {orcamentosAguardando.map(orc => {
+                const clienteNome = Array.isArray(orc.clientes)
+                  ? orc.clientes[0]?.nome_razao_social
+                  : orc.clientes?.nome_razao_social;
+                return (
+                  <div key={orc.id} className="bg-white rounded-xl p-4 border border-orange-100 shadow-sm">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-xs font-bold text-gray-400">#{String(orc.numero_orcamento).padStart(5, "0")}</p>
+                        <p className="font-bold text-gray-800 text-sm mt-0.5 truncate max-w-[160px]">{clienteNome || "—"}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{orc.data_emissao ? formatarData(orc.data_emissao) : ""}</p>
+                      </div>
+                      <p className="font-black text-orange-600 text-sm">{formatarMoeda(Number(orc.valor_total))}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* OPs em andamento geradas a partir dos meus orçamentos */}
+        {opsVendedor.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="p-5 border-b border-gray-100 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="bg-purple-100 text-purple-600 p-2 rounded-xl">
+                  <span className="text-lg">🏭</span>
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">Minhas OPs em Produção</h2>
+                  <p className="text-xs text-gray-500">Ordens geradas a partir dos seus orçamentos aprovados</p>
+                </div>
+              </div>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {opsVendedor.slice(0, 8).map(op => {
+                const st = statusOPLabel[op.status] || { label: op.status, cor: "text-gray-400" };
+                return (
+                  <div key={op.id} className="px-5 py-3.5 flex items-center justify-between">
+                    <div>
+                      <p className="font-bold text-gray-800 text-sm">
+                        OP #{String(op.numero_op).padStart(4, "0")}
+                        <span className="font-normal text-gray-400 ml-2">— {op.cliente_nome}</span>
+                      </p>
+                    </div>
+                    <span className={`text-xs font-bold ${st.cor}`}>{st.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {opsVendedor.length > 8 && (
+              <div className="p-4 text-center text-xs text-gray-400">
+                +{opsVendedor.length - 8} OPs não exibidas
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Histórico recente dos aprovados */}
+        {orcamentosAprovados.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="p-5 border-b border-gray-100 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">✅</span>
+                <h2 className="text-base font-bold text-gray-900">Orçamentos Aprovados</h2>
+              </div>
+              <Link href="/dashboard/historico" className="text-xs font-bold text-blue-600 hover:underline">
+                Ver todos →
+              </Link>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {orcamentosAprovados.map(orc => {
+                const clienteNome = Array.isArray(orc.clientes)
+                  ? orc.clientes[0]?.nome_razao_social
+                  : orc.clientes?.nome_razao_social;
+                return (
+                  <div key={orc.id} className="px-5 py-3.5 flex items-center justify-between">
+                    <div>
+                      <p className="font-bold text-gray-800 text-sm">#{String(orc.numero_orcamento).padStart(5, "0")} — {clienteNome || "—"}</p>
+                      <p className="text-xs text-gray-400">{orc.data_emissao ? formatarData(orc.data_emissao) : ""}</p>
+                    </div>
+                    <p className="font-black text-green-600 text-sm">{formatarMoeda(Number(orc.valor_total))}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
       </div>
     );
   }
