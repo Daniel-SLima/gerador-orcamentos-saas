@@ -210,6 +210,17 @@ export default function ProducaoDetalhePage() {
         </div>
       </div>
 
+      {/* OP Sem Itens */}
+      {op.itens_op.length === 0 && (
+        <div className="p-8 text-center bg-amber-50 rounded-xl border border-amber-100 mb-6">
+          <p className="text-amber-700 font-bold">⚠️ Esta OP não possui itens vinculados.</p>
+          <p className="text-amber-600 text-sm mt-1">
+            Verifique se os itens do orçamento #
+            {op.orcamentos?.numero_orcamento} foram sincronizados corretamente.
+          </p>
+        </div>
+      )}
+
       {/* Barra de progresso geral */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
         <div className="flex justify-between text-sm font-bold text-gray-600 mb-2">

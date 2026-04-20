@@ -144,10 +144,10 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#9ca3af",
     borderTopStyle: "solid",
-    marginBottom: 5,
+    marginBottom: 4,
   },
   signatureText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "bold",
     color: "#111827",
     textAlign: "center",
@@ -175,44 +175,80 @@ const styles = StyleSheet.create({
 });
 
 // ─── Sub-componente: Bloco de Assinaturas (OP) ─────────────────────────────
+// Organograma conforme definição da empresa:
+// Linha 1: Benicio Alonso (Atendimento) | Financeiro | Diretoria Geral | Gerente Administrativo/Produção
+// Linha 2: Gerente Serralheria | Gerente Impressão | Gerente Plotagem | Gerente Instalação
 
 const BlocoAssinaturasOP = ({ dados }: { dados: DadosImpressao }) => {
   const vendedor = Array.isArray(dados.orcamento.vendedores)
     ? dados.orcamento.vendedores[0]
     : dados.orcamento.vendedores;
 
-  return (
-    <View wrap={false} style={{ marginTop: 30, marginBottom: 10 }}>
-      {/* Linha 1: Gerente | Jaime */}
-      <View style={{ flexDirection: "row", justifyContent: "space-around", marginBottom: 30 }}>
-        <View style={{ width: "40%", alignItems: "center" }}>
-          <View style={styles.signatureLine} />
-          <Text style={styles.signatureText}>Gerente</Text>
-        </View>
-        <View style={{ width: "40%", alignItems: "center" }}>
-          <View style={styles.signatureLine} />
-          <Text style={styles.signatureText}>Jaime</Text>
-        </View>
-      </View>
+  // Estilo para cada campo de assinatura individual (4 por linha = ~22% cada)
+  const campoAssinatura = { width: "22%", alignItems: "center" as const };
 
-      {/* Linha 2: Financeiro | Vendedor */}
-      <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
-        <View style={{ width: "40%", alignItems: "center" }}>
+  return (
+    <View wrap={false} style={{ marginTop: 28, marginBottom: 10 }}>
+
+      {/* ── Linha 1: Atendimento | Financeiro | Diretoria Geral | Ger. Adm/Produção ── */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 28 }}>
+
+        {/* Atendimento — nome fixo pois é o responsável pelo atendimento */}
+        <View style={campoAssinatura}>
+          <View style={styles.signatureLine} />
+          <Text style={[styles.signatureText, { color: "#dc2626", fontSize: 8 }]}>
+            {vendedor?.nome || "Benicio Alonso"}
+          </Text>
+          <Text style={styles.signatureRole}>Atendimento</Text>
+        </View>
+
+        <View style={campoAssinatura}>
           <View style={styles.signatureLine} />
           <Text style={styles.signatureText}>Financeiro</Text>
         </View>
-        <View style={{ width: "40%", alignItems: "center" }}>
+
+        <View style={campoAssinatura}>
           <View style={styles.signatureLine} />
-          <Text style={styles.signatureText}>{vendedor?.nome || "Vendedor"}</Text>
-          {vendedor?.email && (
-            <Text style={{ fontSize: 8, color: "#2563eb", marginTop: 2 }}>{vendedor.email}</Text>
-          )}
-          <Text style={styles.signatureRole}>Já Assinado Digitalmente</Text>
+          <Text style={styles.signatureText}>Diretoria Geral</Text>
+        </View>
+
+        <View style={campoAssinatura}>
+          <View style={styles.signatureLine} />
+          <Text style={styles.signatureText}>Gerente</Text>
+          <Text style={styles.signatureRole}>Administrativo/Produção</Text>
+        </View>
+      </View>
+
+      {/* ── Linha 2: Ger. Serralheria | Ger. Impressão | Ger. Plotagem | Ger. Instalação ── */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+
+        <View style={campoAssinatura}>
+          <View style={styles.signatureLine} />
+          <Text style={styles.signatureText}>Gerente</Text>
+          <Text style={styles.signatureRole}>Serralheria</Text>
+        </View>
+
+        <View style={campoAssinatura}>
+          <View style={styles.signatureLine} />
+          <Text style={styles.signatureText}>Gerente</Text>
+          <Text style={styles.signatureRole}>Impressão</Text>
+        </View>
+
+        <View style={campoAssinatura}>
+          <View style={styles.signatureLine} />
+          <Text style={styles.signatureText}>Gerente</Text>
+          <Text style={styles.signatureRole}>Plotagem</Text>
+        </View>
+
+        <View style={campoAssinatura}>
+          <View style={styles.signatureLine} />
+          <Text style={styles.signatureText}>Gerente</Text>
+          <Text style={styles.signatureRole}>Instalação</Text>
         </View>
       </View>
 
       {/* Mensagem de agradecimento */}
-      <View style={{ marginTop: 15, alignItems: "center", paddingHorizontal: 20 }}>
+      <View style={{ marginTop: 14, alignItems: "center", paddingHorizontal: 20 }}>
         <Text style={{ fontSize: 9, color: "#374151", fontStyle: "italic", textAlign: "center" }}>
           A Salvador Comunicação Visual agradece a solicitação. Estamos à disposição para qualquer dúvida.
         </Text>

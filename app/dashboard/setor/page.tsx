@@ -25,6 +25,14 @@ interface ItemOP {
   };
 }
 
+interface OPResumida {
+  op_id: string;
+  numero_op: number;
+  nome_cliente: string;
+  orcamento_id: string;
+  total_itens: number;
+}
+
 const SETORES = ["metalurgia", "impressao", "plotagem", "instalacao", "embalagem"];
 const SETORES_LABELS: Record<string, string> = {
   metalurgia: "Metalurgia",
@@ -41,7 +49,10 @@ export default function SetorPage() {
   const { showAlert, alertProps } = useAlert();
 
   const [setorAtual, setSetorAtual] = useState<string>("");
-  const [itens, setItens] = useState<ItemOP[]>([]);
+  const [ops, setOps] = useState<OPResumida[]>([]);
+  const [opSelecionada, setOpSelecionada] = useState<OPResumida | null>(null);
+  const [modalAberto, setModalAberto] = useState(false);
+  const [itensDaOp, setItensDaOp] = useState<ItemOP[]>([]);
   const [loading, setLoading] = useState(true);
   const [processando, setProcessando] = useState<string | null>(null);
 
@@ -60,7 +71,7 @@ export default function SetorPage() {
 
   useEffect(() => {
     if (setorAtual) {
-      carregarItens();
+      carregarOPs();
       const channel = supabase
         .channel(`setor_${setorAtual}_${Date.now()}`)
         .on(
@@ -71,23 +82,28 @@ export default function SetorPage() {
             table: "itens_op",
             filter: `setor_atual=eq.${setorAtual}`,
           },
-          () => { carregarItens(); }
+          () => {
+            carregarOPs();
+            if (opSelecionada) {
+              carregarItensDaOP(opSelecionada);
+            }
+          }
         )
         .subscribe();
-
       return () => { supabase.removeChannel(channel); };
     }
-  }, [setorAtual]);
+  }, [setorAtual, opSelecionada]);
 
-  const carregarItens = async () => {
+  const carregarOPs = async () => {
     if (!setorAtual) return;
     setLoading(true);
     try {
       let query = supabase
         .from("itens_op")
         .select(`
-          id, descricao, quantidade, medidas, imagem_url, setor_atual, status_item, op_id,
+          op_id,
           ordens_producao (
+            id,
             numero_op,
             orcamento_id,
             orcamentos ( clientes ( nome_razao_social ) )
@@ -101,13 +117,78 @@ export default function SetorPage() {
         query = query.eq("setor_atual", setorAtual);
       }
 
-      query = query.order("created_at", { ascending: true });
-
       const { data, error } = await query;
       if (error) throw error;
-      setItens((data as unknown as ItemOP[]) || []);
+
+      const mapOPs = new Map<string, OPResumida>();
+      (data || []).forEach((item: any) => {
+        const op = Array.isArray(item.ordens_producao)
+          ? item.ordens_producao[0]
+          : item.ordens_producao;
+        if (!op) return;
+        const cliente = Array.isArray(op.orcamentos?.clientes)
+          ? op.orcamentos.clientes[0]?.nome_razao_social
+          : op.orcamentos?.clientes?.nome_razao_social;
+        const chave = item.op_id;
+        if (mapOPs.has(chave)) {
+          mapOPs.get(chave)!.total_itens += 1;
+        } else {
+          mapOPs.set(chave, {
+            op_id: item.op_id,
+            numero_op: op.numero_op,
+            nome_cliente: cliente || "Cliente não informado",
+            orcamento_id: op.orcamento_id,
+            total_itens: 1,
+          });
+        }
+      });
+
+      const listaOPs = Array.from(mapOPs.values()).sort((a, b) => a.numero_op - b.numero_op);
+      setOps(listaOPs);
+
+      if (opSelecionada) {
+        const opAtualizada = listaOPs.find(o => o.op_id === opSelecionada.op_id);
+        if (!opAtualizada) {
+          setOpSelecionada(null);
+          setItensDaOp([]);
+        }
+      }
     } catch (err) {
-      console.error("Erro ao carregar itens:", err);
+      console.error("Erro ao carregar OPs:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const carregarItensDaOP = async (op: OPResumida) => {
+    setLoading(true);
+    try {
+      let query = supabase
+        .from("itens_op")
+        .select(`
+          id, descricao, quantidade, medidas, imagem_url, setor_atual, status_item, op_id,
+          ordens_producao (
+            numero_op,
+            orcamento_id,
+            orcamentos ( clientes ( nome_razao_social ) )
+          )
+        `)
+        .eq("op_id", op.op_id)
+        .in("status_item", ["pendente", "em_andamento"]);
+
+      if (setorAtual === "metalurgia") {
+        query = query.or(`setor_atual.eq.metalurgia,setor_atual.eq.aguardando`);
+      } else {
+        query = query.eq("setor_atual", setorAtual);
+      }
+
+      const { data, error } = await query.order("created_at", { ascending: true });
+      if (error) throw error;
+      setItensDaOp((data as unknown as ItemOP[]) || []);
+      setOpSelecionada(op);
+      setModalAberto(false);
+    } catch (err) {
+      console.error("Erro ao carregar itens da OP:", err);
     } finally {
       setLoading(false);
     }
@@ -135,7 +216,7 @@ export default function SetorPage() {
       if (errUpd) throw errUpd;
 
       // Atualiza estado local
-      setItens(prev => prev.map(i => i.id === item.id ? { ...i, status_item: "em_andamento" } : i));
+      setItensDaOp(prev => prev.map(i => i.id === item.id ? { ...i, status_item: "em_andamento" } : i));
       showAlert("Item recebido com sucesso!", { type: "success", title: "OK" });
     } catch (err) {
       showAlert("Erro ao registrar: " + (err as Error).message, { type: "error", title: "Erro" });
@@ -262,7 +343,7 @@ export default function SetorPage() {
       }
 
       // Remove item da lista local (já saiu do setor)
-      setItens(prev => prev.filter(i => i.id !== item.id));
+      setItensDaOp(prev => prev.filter(i => i.id !== item.id));
       showAlert(`Item avançado para ${proximoSetor === "concluido" ? "conclusão" : proximoSetor}!`, { type: "success", title: "OK" });
     } catch (err) {
       showAlert("Erro ao finalizar: " + (err as Error).message, { type: "error", title: "Erro" });
@@ -285,8 +366,8 @@ export default function SetorPage() {
   return (
     <div className="min-h-screen bg-gray-900 text-white">
 
-      {/* Cabeçalho */}
-      <div className="bg-gray-800 border-b border-gray-700 p-4">
+      {/* ===================== CABEÇALHO ===================== */}
+      <div className="bg-gray-800 border-b border-gray-700 p-4 sticky top-0 z-20">
         <div className="max-w-3xl mx-auto">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -295,10 +376,15 @@ export default function SetorPage() {
                 {setorDoOperador || (isAdmin ? "Modo Admin" : "Sem setor definido")}
               </p>
             </div>
-            {mostrarSeletor && (
+            {/* Seletor de setor para Admin */}
+            {isAdmin && (
               <select
                 value={setorAtual}
-                onChange={e => setSetorAtual(e.target.value)}
+                onChange={e => {
+                  setSetorAtual(e.target.value);
+                  setOpSelecionada(null);
+                  setItensDaOp([]);
+                }}
                 className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white font-bold text-sm focus:ring-2 focus:ring-blue-500 outline-none"
               >
                 {SETORES.map(s => (
@@ -307,97 +393,201 @@ export default function SetorPage() {
               </select>
             )}
           </div>
-          {setorAtual && (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-gray-400">Filtrando por:</span>
-              <span className="px-3 py-1 bg-blue-600 rounded-full font-bold text-white">{SETORES_LABELS[setorAtual]}</span>
-            </div>
-          )}
+
+          {/* Linha de filtro + botão de seleção de OP */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {setorAtual && (
+              <span className="px-3 py-1 bg-blue-600 rounded-full font-bold text-white text-sm">
+                {SETORES_LABELS[setorAtual]}
+              </span>
+            )}
+
+            {/* Botão de seleção de OP — mostra a OP atual ou convida a escolher */}
+            <button
+              onClick={() => setModalAberto(true)}
+              className="flex items-center gap-2 px-4 py-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-500 rounded-full text-sm font-bold text-white transition-colors"
+            >
+              <span>📋</span>
+              {opSelecionada
+                ? `OP ${String(opSelecionada.numero_op).padStart(4, "0")} — ${opSelecionada.nome_cliente}`
+                : "Selecionar OP"}
+              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Botão Ver OP — aparece ao lado quando uma OP está selecionada */}
+            {opSelecionada && (
+              <button
+                onClick={() => window.open(`/imprimir/${opSelecionada.orcamento_id}?action=op`, "_blank")}
+                className="flex items-center gap-2 px-4 py-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-500 rounded-full text-sm font-bold text-gray-200 transition-colors"
+              >
+                <span>📄</span>
+                Ver OP
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Lista de itens */}
+      {/* ===================== MODAL DE SELEÇÃO DE OP ===================== */}
+      {modalAberto && (
+        <div
+          className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+          onClick={() => setModalAberto(false)}
+        >
+          <div
+            className="bg-gray-800 border border-gray-700 rounded-2xl w-full max-w-md shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-gray-700 flex items-center justify-between">
+              <h2 className="text-xl font-black text-white">Selecionar Ordem de Produção</h2>
+              <button
+                onClick={() => setModalAberto(false)}
+                className="text-gray-400 hover:text-white p-1"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-4 max-h-96 overflow-y-auto space-y-2">
+              {loading ? (
+                <p className="text-gray-400 text-center py-8 animate-pulse">Carregando OPs...</p>
+              ) : ops.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-300 font-bold">Nenhuma OP aguardando neste setor.</p>
+                  <p className="text-gray-500 text-sm mt-1">Tudo em dia! ✅</p>
+                </div>
+              ) : (
+                ops.map(op => (
+                  <button
+                    key={op.op_id}
+                    onClick={() => carregarItensDaOP(op)}
+                    className={`w-full text-left p-4 rounded-xl border transition-all ${
+                      opSelecionada?.op_id === op.op_id
+                        ? "bg-blue-700 border-blue-500 text-white"
+                        : "bg-gray-700 border-gray-600 hover:bg-gray-600 text-gray-100"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">OP</p>
+                        <p className="text-xl font-black">
+                          #{String(op.numero_op).padStart(4, "0")}
+                        </p>
+                        <p className="text-sm font-semibold text-gray-300 mt-0.5">{op.nome_cliente}</p>
+                      </div>
+                      <span className="bg-blue-600/30 text-blue-300 font-black text-sm px-3 py-1 rounded-full">
+                        {op.total_itens} {op.total_itens === 1 ? "item" : "itens"}
+                      </span>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== CONTEÚDO PRINCIPAL ===================== */}
       <div className="max-w-3xl mx-auto p-4">
-        {loading ? (
+
+        {/* Estado: nenhuma OP selecionada */}
+        {!opSelecionada && !loading && (
+          <div className="p-12 text-center flex flex-col items-center">
+            <div className="w-16 h-16 bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
+              <span className="text-3xl">📋</span>
+            </div>
+            <h3 className="text-lg font-bold text-gray-200">Selecione uma OP para começar</h3>
+            <p className="text-gray-400 text-sm mt-1 mb-5">
+              Toque no botão acima para ver as ordens de produção aguardando no seu setor.
+            </p>
+            <button
+              onClick={() => setModalAberto(true)}
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-bold text-white transition-colors"
+            >
+              Ver OPs disponíveis ({ops.length})
+            </button>
+          </div>
+        )}
+
+        {/* Estado: carregando itens da OP */}
+        {loading && opSelecionada && (
           <div className="text-center py-12">
             <p className="text-gray-400 text-xl font-bold animate-pulse">Carregando itens...</p>
           </div>
-        ) : itens.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="text-6xl mb-4">✅</div>
-            <p className="text-gray-400 text-xl font-bold">Nenhum item pendente</p>
-            <p className="text-gray-500 text-sm mt-1">Itens chegarão aqui automaticamente</p>
+        )}
+
+        {/* Estado: OP selecionada sem itens */}
+        {opSelecionada && !loading && itensDaOp.length === 0 && (
+          <div className="p-12 text-center flex flex-col items-center">
+            <div className="w-16 h-16 bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-gray-200">Tudo em dia nesta OP!</h3>
+            <p className="text-gray-400 text-sm mt-1">Nenhum item pendente neste setor para esta OP.</p>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {itens.map(item => {
-              const cliente = Array.isArray(item.ordens_producao?.orcamentos?.clientes)
-                ? item.ordens_producao?.orcamentos?.clientes[0]?.nome_razao_social
-                : item.ordens_producao?.orcamentos?.clientes?.nome_razao_social;
+        )}
+
+        {/* ===================== GRADE DE CARDS (2 por linha) ===================== */}
+        {opSelecionada && !loading && itensDaOp.length > 0 && (
+          <div className="grid grid-cols-2 gap-3">
+            {itensDaOp.map(item => {
               const pendente = item.status_item === "pendente";
 
               return (
-                <div key={item.id} className="bg-gray-800 border border-gray-700 rounded-2xl p-5">
-                  {/* OP e Cliente */}
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">OP</span>
-                      <p className="text-xl font-black text-white">#{String(item.ordens_producao?.numero_op || 0).padStart(4, "0")}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-semibold text-gray-300">{cliente || "—"}</p>
-                    </div>
-                  </div>
-
-                  {/* Descrição do item */}
-                  <div className="mb-4">
-                    <p className="text-lg font-bold text-white leading-tight">{item.descricao}</p>
-                    <p className="text-gray-400 text-sm mt-1">
-                      <span className="text-2xl font-black text-blue-400">{item.quantidade}x</span>
-                      {" "} {item.medidas || "sem medidas"}
-                    </p>
-                  </div>
-
-                  {/* Imagem */}
-                  {item.imagem_url && (
+                <div
+                  key={item.id}
+                  className="bg-gray-800 border border-gray-700 rounded-2xl overflow-hidden flex flex-col"
+                >
+                  {/* Imagem do produto — ocupa área generosa no topo do card */}
+                  {item.imagem_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.imagem_url} alt="" className="w-full h-40 object-cover rounded-xl mb-4 border border-gray-600" />
+                    <img
+                      src={item.imagem_url}
+                      alt={item.descricao}
+                      className="w-full aspect-square object-cover"
+                    />
+                  ) : (
+                    <div className="w-full aspect-square bg-gray-700 flex items-center justify-center">
+                      <span className="text-4xl">📦</span>
+                    </div>
                   )}
 
-                  {/* Botões de ação */}
-                  <div className="grid grid-cols-2 gap-3">
+                  {/* Informações do item */}
+                  <div className="p-3 flex flex-col gap-2 flex-1">
+                    <p className="text-sm font-bold text-white leading-tight line-clamp-2">
+                      {item.descricao}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      <span className="text-blue-400 font-black text-base">{item.quantidade}x</span>
+                      {" "} {item.medidas ? ` ${item.medidas}` : ""}
+                    </p>
+
+                    {/* Botão único: Recebi (pendente) ou Finalizei e Entreguei (em_andamento) */}
                     {pendente ? (
                       <button
                         onClick={() => receberItem(item)}
                         disabled={processando === item.id}
-                        className="py-5 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-xl text-xl font-black text-white transition-colors flex flex-col items-center gap-1"
+                        className="mt-auto w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-xl font-black text-white text-sm transition-colors flex flex-col items-center gap-0.5"
                       >
-                        <span className="text-3xl">📥</span>
-                        {processando === item.id ? "Processando..." : "Recebi"}
+                        <span className="text-xl">📥</span>
+                        {processando === item.id ? "..." : "Recebi"}
                       </button>
                     ) : (
                       <button
                         onClick={() => finalizarItem(item)}
                         disabled={processando === item.id}
-                        className="py-5 px-4 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-xl text-xl font-black text-white transition-colors flex flex-col items-center gap-1"
+                        className="mt-auto w-full py-3 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-xl font-black text-white text-sm transition-colors flex flex-col items-center gap-0.5"
                       >
-                        <span className="text-3xl">🚀</span>
-                        {processando === item.id ? "Processando..." : "Finalizei e Entreguei"}
+                        <span className="text-xl">🚀</span>
+                        {processando === item.id ? "..." : "Enviado"}
                       </button>
                     )}
-                    {/* Botão Ver OP */}
-                    <button
-                      onClick={() => {
-                        const orcamentoId = item.ordens_producao?.orcamento_id;
-                        if (orcamentoId) {
-                          window.open(`/imprimir/${orcamentoId}?action=op`, "_blank");
-                        }
-                      }}
-                      className="py-5 px-4 bg-gray-700 hover:bg-gray-600 rounded-xl text-xl font-black text-white transition-colors flex flex-col items-center gap-1"
-                    >
-                      <span className="text-3xl">📄</span>
-                      Ver OP
-                    </button>
                   </div>
                 </div>
               );
