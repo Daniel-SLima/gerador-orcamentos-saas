@@ -108,9 +108,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  colImg: { width: "15%", alignItems: "center", justifyContent: "center" },
-  colDesc: { width: "75%", paddingLeft: 15, paddingRight: 5, justifyContent: "center" },
-  colDescHeader: { width: "75%", paddingLeft: 15 },
+  colIndex: {
+    width: "8%",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingLeft: 4,
+  },
+  colImg: { width: "7%", alignItems: "center", justifyContent: "center" },
+  colDesc: { width: "77%", paddingLeft: 15, paddingRight: 5, justifyContent: "center" },
+  colDescHeader: { width: "77%", paddingLeft: 15 },
   colQty: { width: "10%", textAlign: "center" },
 
   tableCell: { fontSize: 9, color: "#374151" },
@@ -146,6 +152,12 @@ const styles = StyleSheet.create({
     borderTopStyle: "solid",
     marginBottom: 4,
   },
+  signatureLineWithName: {
+    width: "100%",
+    borderTopWidth: 1,
+    borderTopColor: "#9ca3af",
+    borderTopStyle: "solid",
+  },
   signatureText: {
     fontSize: 9,
     fontWeight: "bold",
@@ -154,6 +166,13 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   signatureRole: { fontSize: 8, color: "#6b7280", textAlign: "center" },
+  signatureTextWithName: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: "#111827",
+    textAlign: "center",
+    textTransform: "uppercase",
+  },
 
   pageNumber: {
     position: "absolute",
@@ -193,13 +212,17 @@ const BlocoAssinaturasOP = ({ dados }: { dados: DadosImpressao }) => {
       {/* ── Linha 1: Atendimento | Financeiro | Diretoria Geral | Ger. Adm/Produção ── */}
       <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 28 }}>
 
-        {/* Atendimento — nome fixo pois é o responsável pelo atendimento */}
+        {/* Atendimento — nome do vendedor como assinatura digital */}
         <View style={campoAssinatura}>
+          {/* A linha vem primeiro no fluxo para alinhar com as outras colunas */}
           <View style={styles.signatureLine} />
-          <Text style={[styles.signatureText, { color: "#dc2626", fontSize: 8 }]}>
-            {vendedor?.nome || "Benicio Alonso"}
+
+          {/* O nome do vendedor é posicionado de forma absoluta para não empurrar a linha */}
+          <Text style={[styles.signatureText, { position: "absolute", top: -10, width: "100%" }]}>
+            {vendedor?.nome}
           </Text>
-          <Text style={styles.signatureRole}>Atendimento</Text>
+
+          <Text style={styles.signatureText}>Atendimento</Text>
         </View>
 
         <View style={campoAssinatura}>
@@ -359,6 +382,27 @@ export const OrdemProducaoPDF = ({ dados }: { dados: DadosImpressao }) => {
             <Text style={styles.clientGridCol} />
           </View>
 
+          {(dados.cliente?.inscricao_estadual || dados.cliente?.inscricao_municipal) && (
+            <View style={styles.clientGridRow}>
+              {dados.cliente?.inscricao_estadual ? (
+                <Text style={styles.clientGridCol}>
+                  <Text style={styles.clientLabel}>Insc. Estadual: </Text>
+                  {dados.cliente.inscricao_estadual}
+                </Text>
+              ) : (
+                <Text style={styles.clientGridCol} />
+              )}
+              {dados.cliente?.inscricao_municipal ? (
+                <Text style={styles.clientGridCol}>
+                  <Text style={styles.clientLabel}>Insc. Municipal: </Text>
+                  {dados.cliente.inscricao_municipal}
+                </Text>
+              ) : (
+                <Text style={styles.clientGridCol} />
+              )}
+            </View>
+          )}
+
           <View style={[styles.clientGridRow, { flexDirection: "column" }]}>
             <Text style={{ fontSize: 10, color: "#4b5563", width: "100%", marginBottom: 2 }}>
               <Text style={styles.clientLabel}>Endereço: </Text>
@@ -407,6 +451,9 @@ export const OrdemProducaoPDF = ({ dados }: { dados: DadosImpressao }) => {
         {/* Tabela de itens (sem preços na OP) */}
         <View style={styles.table}>
           <View style={styles.tableHeader} fixed>
+            <View style={styles.colIndex}>
+              <Text style={styles.tableHeaderText}>Item</Text>
+            </View>
             <View style={styles.colImg}>
               <Text style={styles.tableHeaderText}>Imagem</Text>
             </View>
@@ -430,6 +477,9 @@ export const OrdemProducaoPDF = ({ dados }: { dados: DadosImpressao }) => {
 
             return (
               <View style={styles.tableRow} key={index} wrap={false}>
+                <View style={styles.colIndex}>
+                  <Text style={styles.tableCell}>{String.fromCharCode(65 + index)}</Text>
+                </View>
                 <View style={styles.colImg}>
                   {urlDaImagem ? (
                     <PDFImage src={urlDaImagem} style={styles.itemImage} />
@@ -485,24 +535,25 @@ export const OrdemProducaoPDF = ({ dados }: { dados: DadosImpressao }) => {
           pdfImageUrl = pdfImageUrl.replace(/\.webp$/i, ".jpg");
         }
         return (
-        <Page key={`anexo-${idx}`} size="A4" style={styles.page}>
-          {renderHeader(`ANEXO: ${img.file_name}`)}
-          <View
-            style={{ flex: 1, marginVertical: 10, alignItems: "center", justifyContent: "center" }}
-          >
-            <PDFImage
-              src={pdfImageUrl}
-              style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+          <Page key={`anexo-${idx}`} size="A4" style={styles.page}>
+            {renderHeader(`ANEXO: ${img.file_name}`)}
+            <View
+              style={{ flex: 1, marginVertical: 10, alignItems: "center", justifyContent: "center" }}
+            >
+              <PDFImage
+                src={pdfImageUrl}
+                style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+              />
+            </View>
+            <BlocoAssinaturasOP dados={dados} />
+            <Text
+              render={({ pageNumber, totalPages }) => `Página ${pageNumber} de ${totalPages}`}
+              fixed
+              style={styles.pageNumber}
             />
-          </View>
-          <BlocoAssinaturasOP dados={dados} />
-          <Text
-            render={({ pageNumber, totalPages }) => `Página ${pageNumber} de ${totalPages}`}
-            fixed
-            style={styles.pageNumber}
-          />
-        </Page>
-      )})}
+          </Page>
+        )
+      })}
     </Document>
   );
 };

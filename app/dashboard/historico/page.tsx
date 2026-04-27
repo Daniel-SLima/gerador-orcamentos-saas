@@ -42,7 +42,7 @@ export default function HistoricoOrcamentosPage() {
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
   const [menuDirection, setMenuDirection] = useState<'up' | 'down'>('down');
   const router = useRouter();
-  const { isAdmin, loadingPerfil } = usePerfilUsuario();
+  const { isAdmin, isVendedor, isFinanceiro, loadingPerfil } = usePerfilUsuario();
   const { showAlert, alertProps } = useAlert();
   const { showConfirm, confirmProps } = useConfirm();
 
@@ -123,7 +123,7 @@ export default function HistoricoOrcamentosPage() {
         `, { count: 'exact' })
         .order("numero_orcamento", { ascending: false });
 
-      if (!isAdmin) {
+      if (!isAdmin && !isFinanceiro) {
         query = query.eq("user_id", user.id);
       }
 
@@ -189,7 +189,7 @@ export default function HistoricoOrcamentosPage() {
       let queryItens = supabase.from("itens_orcamento").delete().eq("orcamento_id", id);
       let queryOrc = supabase.from("orcamentos").delete().eq("id", id);
 
-      if (!isAdmin) {
+      if (!isAdmin && !isFinanceiro) {
         queryItens = queryItens.eq("user_id", user.id);
         queryOrc = queryOrc.eq("user_id", user.id);
       }
@@ -225,13 +225,41 @@ export default function HistoricoOrcamentosPage() {
   };
 
   const mudarStatus = async (id: string, novoStatus: string) => {
+    const orc = orcamentos.find(o => o.id === id);
+    if (!orc) return;
+
+    // Vendedor pode fazer transições específicas: Rascunho→Aberto, Rascunho→Recusado, Aberto→Recusado
+    if (isVendedor && !isAdmin) {
+      const transicoesPermitidas = {
+        Rascunho: ["Aberto", "Recusado"],
+        Aberto: ["Rascunho", "Recusado"],
+        Recusado: ["Rascunho", "Aberto"],
+        Aprovado: [],
+      };
+      const permitidas = transicoesPermitidas[orc.status as keyof typeof transicoesPermitidas] || [];
+      if (!permitidas.includes(novoStatus)) {
+        showAlert("Você não tem permissão para fazer essa alteração de status.", { type: "error", title: "Permissão negada" });
+        return;
+      }
+    } else if (!isAdmin) {
+      showAlert("Você não tem permissão para alterar o status de orçamentos.", { type: "error", title: "Permissão negada" });
+      return;
+    }
+
     try {
-      const { error } = await supabase.from("orcamentos").update({ status: novoStatus }).eq("id", id);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Sessão expirada.");
+
+      const { error } = await supabase
+        .from("orcamentos")
+        .update({ status: novoStatus })
+        .eq("id", id)
+        .eq("user_id", user.id);
       if (error) throw error;
       setOrcamentos(orcamentos.map(orc => orc.id === id ? { ...orc, status: novoStatus } : orc));
 
       // --- NOTIFICAÇÃO PARA VENDEDOR ---
-      if (isAdmin && (novoStatus === "Aprovado" || novoStatus === "Recusado")) {
+      if (novoStatus === "Aprovado" || novoStatus === "Recusado") {
         try {
           const orc = orcamentos.find(o => o.id === id);
           if (orc) {
@@ -290,6 +318,21 @@ export default function HistoricoOrcamentosPage() {
     setModalOpAberto(true);
   };
 
+  const verificarOpECarregar = async (orcamentoId: string, numeroOrcamento: number) => {
+    setMenuAbertoId(null);
+    const { data: opExistente } = await supabase
+      .from("ordens_producao")
+      .select("id, numero_op")
+      .eq("orcamento_id", orcamentoId)
+      .maybeSingle();
+
+    if (!opExistente) {
+      showAlert("Este orçamento ainda não possui uma Ordem de Produção gerada.", { type: "warning", title: "Sem O.P." });
+      return;
+    }
+    window.open(`/imprimir/${orcamentoId}?action=op`, "_blank");
+  };
+
   const abrirModalGerarOP = (orc: Orcamento) => {
     setMenuAbertoId(null);
     // ⚠️ AVISO: Se o orçamento está aprovado, os itens podem estar desatualizados
@@ -339,7 +382,7 @@ export default function HistoricoOrcamentosPage() {
         contato_obra: contatoCombinado
       }).eq("id", orcamentoOpSelecionado);
 
-      if (!isAdmin) {
+      if (!isAdmin && !isFinanceiro) {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           queryUpdate = queryUpdate.eq("user_id", user.id);
@@ -368,10 +411,12 @@ export default function HistoricoOrcamentosPage() {
           .maybeSingle();
 
         if (!opExistente) {
+          // Busca numero_orcamento para sincronia
+          const orcOrigem = orcamentos.find(o => o.id === orcamentoOpSelecionado);
           // Cria a Ordem de Produção
           const { data: novaOp, error: erroOp } = await supabase
             .from("ordens_producao")
-            .insert({ orcamento_id: orcamentoOpSelecionado, status: "em_producao" })
+            .insert({ orcamento_id: orcamentoOpSelecionado, status: "em_producao", numero_op: orcOrigem?.numero_orcamento })
             .select("id")
             .single();
 
@@ -380,7 +425,7 @@ export default function HistoricoOrcamentosPage() {
           // Busca os itens do orçamento para criar itens da OP
           const { data: itensOrc } = await supabase
             .from("itens_orcamento")
-            .select("id, descricao, quantidade, medidas, produtos(imagem_url)")
+            .select("id, descricao, quantidade, medidas, produto_id, produtos(imagem_url, id)")
             .eq("orcamento_id", orcamentoOpSelecionado);
 
           if (itensOrc && itensOrc.length > 0) {
@@ -397,12 +442,56 @@ export default function HistoricoOrcamentosPage() {
               status_item: "pendente"
             }));
 
-            const { error: erroItensOp } = await supabase
+            const { data: itensOpCriados, error: erroItensOp } = await supabase
               .from("itens_op")
-              .insert(itensParaOp);
+              .insert(itensParaOp)
+              .select("id, item_orcamento_id");
 
             if (erroItensOp) {
               console.error("Erro ao criar itens da OP:", erroItensOp);
+            }
+
+            // ── CÓPIA DOS SUBITENS DO PRODUTO → SUBITENS_OP ──
+            if (itensOpCriados && itensOpCriados.length > 0) {
+              try {
+                // Monta mapa: item_orcamento_id → id do item_op recém-criado
+                const mapaItemOrcToItemOp = new Map<string, string>();
+                itensOpCriados.forEach(io => {
+                  if (io.item_orcamento_id) mapaItemOrcToItemOp.set(io.item_orcamento_id, io.id);
+                });
+
+                // Para cada item do orçamento que tem produto_id, busca subitens_produto
+                const subItensParaInserir: { item_op_id: string; nome: string }[] = [];
+
+                for (const itemOrc of itensOrc!) {
+                  const produtoId = itemOrc.produto_id;
+                  const itemOpId = mapaItemOrcToItemOp.get(itemOrc.id);
+                  if (!produtoId || !itemOpId) continue;
+
+                  const { data: subitensTemplate } = await supabase
+                    .from("subitens_produto")
+                    .select("nome, ordem")
+                    .eq("produto_id", produtoId)
+                    .order("ordem", { ascending: true });
+
+                  if (subitensTemplate && subitensTemplate.length > 0) {
+                    subitensTemplate.forEach(st => {
+                      subItensParaInserir.push({ item_op_id: itemOpId, nome: st.nome });
+                    });
+                  }
+                }
+
+                if (subItensParaInserir.length > 0) {
+                  const { error: erroSubitens } = await supabase
+                    .from("subitens_op")
+                    .insert(subItensParaInserir);
+                  if (erroSubitens) {
+                    console.error("Erro ao copiar subitens para OP:", erroSubitens);
+                  }
+                }
+              } catch (err) {
+                console.error("Erro no processo de cópia de subitens:", err);
+              }
             }
 
             // --- NOTIFICAÇÃO PARA OPERADORES DA METALURGIA ---
@@ -618,7 +707,7 @@ export default function HistoricoOrcamentosPage() {
   };
 
   // Lista deduplificada de vendedores para o filtro
-  const vendedoresUnicos = isAdmin
+  const vendedoresUnicos = (isAdmin || isFinanceiro)
     ? Array.from(
         new Map(
           orcamentos
@@ -779,7 +868,7 @@ export default function HistoricoOrcamentosPage() {
 
                     {menuAbertoId === orc.id && (
                       <div className={`absolute right-4 w-44 bg-white border border-gray-100 rounded-xl shadow-xl z-50 flex flex-col py-2 animate-fade-in ${menuDirection === 'up' ? 'bottom-8' : 'top-10'}`}>
-                        {orc.status === 'Aprovado' && (
+                        {orc.status === 'Aprovado' && !isFinanceiro && (
                           <>
                             <button onClick={(e) => { e.stopPropagation(); abrirModalGerarOP(orc); }} className="px-4 py-2.5 text-sm text-left font-bold text-green-700 hover:bg-green-50 flex items-center gap-2">
                               📄 Gerar O.P.
@@ -794,6 +883,11 @@ export default function HistoricoOrcamentosPage() {
                             )}
                           </>
                         )}
+                        {orc.status === 'Aprovado' && isFinanceiro && (
+                          <button onClick={(e) => { e.stopPropagation(); verificarOpECarregar(orc.id, orc.numero_orcamento); }} className="px-4 py-2.5 text-sm text-left font-bold text-green-700 hover:bg-green-50 flex items-center gap-2">
+                            📄 Ver O.P.
+                          </button>
+                        )}
                         <button onClick={(e) => { e.stopPropagation(); visualizarPDF(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg> Ver PDF
                         </button>
@@ -803,21 +897,25 @@ export default function HistoricoOrcamentosPage() {
                         <button onClick={(e) => { e.stopPropagation(); baixarPDF(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-gray-700 hover:bg-gray-100 flex items-center gap-2">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg> Baixar PDF
                         </button>
-                        <div className="h-px bg-gray-100 my-1 mx-2"></div>
-                        <button onClick={(e) => { e.stopPropagation(); editarOrcamento(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-blue-600 hover:bg-blue-50 flex items-center gap-2">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg> Editar
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); clonarOrcamento(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-purple-600 hover:bg-purple-50 flex items-center gap-2">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg> Duplicar
-                        </button>
-                        <div className="h-px bg-gray-100 my-1 mx-2"></div>
-                        <button onClick={(e) => { e.stopPropagation(); deletarOrcamento(orc.id); }} disabled={deletandoId === orc.id} className="px-4 py-2.5 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-wait w-full">
-                          {deletandoId === orc.id ? (
-                            <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Excluindo...</>
-                          ) : (
-                            <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> Excluir</>
-                          )}
-                        </button>
+                        {!isFinanceiro && (
+                          <>
+                            <div className="h-px bg-gray-100 my-1 mx-2"></div>
+                            <button onClick={(e) => { e.stopPropagation(); editarOrcamento(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-blue-600 hover:bg-blue-50 flex items-center gap-2">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg> Editar
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); clonarOrcamento(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-purple-600 hover:bg-purple-50 flex items-center gap-2">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg> Duplicar
+                            </button>
+                            <div className="h-px bg-gray-100 my-1 mx-2"></div>
+                            <button onClick={(e) => { e.stopPropagation(); deletarOrcamento(orc.id); }} disabled={deletandoId === orc.id} className="px-4 py-2.5 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-wait w-full">
+                              {deletandoId === orc.id ? (
+                                <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Excluindo...</>
+                              ) : (
+                                <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> Excluir</>
+                              )}
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -825,22 +923,50 @@ export default function HistoricoOrcamentosPage() {
                   <div className="flex justify-between items-end mt-4">
                     <div className="space-y-1.5">
                       <p className="text-xs text-gray-500 font-medium">Emitido em: {formatarData(orc.data_emissao)}</p>
-                      <select
-                        value={orc.status}
-                        onChange={(e) => mudarStatus(orc.id, e.target.value)}
-                        disabled={!isAdmin && (orc.status === "Aprovado" || orc.status === "Recusado")}
-                        className={`inline-block px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border appearance-none outline-none cursor-pointer ${orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                      {isAdmin && !isFinanceiro && (
+                        <select
+                          value={orc.status}
+                          onChange={(e) => mudarStatus(orc.id, e.target.value)}
+                          className={`inline-block px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border appearance-none outline-none cursor-pointer ${orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                              orc.status === 'Aberto' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                orc.status === 'Aprovado' ? 'bg-green-50 text-green-700 border-green-200' :
+                                  orc.status === 'Recusado' ? 'bg-red-50 text-red-700 border-red-200' :
+                                    'bg-gray-100 text-gray-600 border-gray-200'
+                            }`}
+                        >
+                          <option value="Rascunho">Rascunho</option>
+                          <option value="Aberto">Aberto</option>
+                          <option value="Aprovado">Aprovado</option>
+                          <option value="Recusado">Recusado</option>
+                        </select>
+                      )}
+                      {isVendedor && !isAdmin && (
+                        <select
+                          value={orc.status}
+                          onChange={(e) => mudarStatus(orc.id, e.target.value)}
+                          className={`inline-block px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border appearance-none outline-none cursor-pointer ${orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                              orc.status === 'Aberto' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                orc.status === 'Aprovado' ? 'bg-green-50 text-green-700 border-green-200' :
+                                  orc.status === 'Recusado' ? 'bg-red-50 text-red-700 border-red-200' :
+                                    'bg-gray-100 text-gray-600 border-gray-200'
+                            }`}
+                        >
+                          <option value="Rascunho">Rascunho</option>
+                          <option value="Aberto">Aberto</option>
+                          <option value="Aprovado" disabled>Aprovado</option>
+                          <option value="Recusado">Recusado</option>
+                        </select>
+                      )}
+                      {(!isAdmin && !isVendedor) || isFinanceiro && (
+                        <span className={`inline-block px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
                             orc.status === 'Aberto' ? 'bg-blue-50 text-blue-700 border-blue-200' :
                               orc.status === 'Aprovado' ? 'bg-green-50 text-green-700 border-green-200' :
                                 orc.status === 'Recusado' ? 'bg-red-50 text-red-700 border-red-200' :
                                   'bg-gray-100 text-gray-600 border-gray-200'
-                          }`}
-                      >
-                        <option value="Rascunho">Rascunho</option>
-                        <option value="Aberto">Aberto</option>
-                        <option value="Aprovado" disabled={!isAdmin}>Aprovado</option>
-                        <option value="Recusado" disabled={!isAdmin}>Recusado</option>
-                      </select>
+                          }`}>
+                          {orc.status}
+                        </span>
+                      )}
                     </div>
                     <p className="font-black text-green-600 text-lg">{formatarMoeda(orc.valor_total)}</p>
                   </div>
@@ -874,22 +1000,48 @@ export default function HistoricoOrcamentosPage() {
                         )}
                       </td>
                       <td className="p-4">
-                        <select
-                          value={orc.status}
-                          onChange={(e) => mudarStatus(orc.id, e.target.value)}
-                          disabled={!isAdmin && (orc.status === "Aprovado" || orc.status === "Recusado")}
-                          className={`px-3 py-1 text-xs font-bold rounded-md border appearance-none outline-none cursor-pointer ${orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                        {isAdmin && !isFinanceiro ? (
+                          <select
+                            value={orc.status}
+                            onChange={(e) => mudarStatus(orc.id, e.target.value)}
+                            className={`px-3 py-1 text-xs font-bold rounded-md border appearance-none outline-none cursor-pointer ${orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                orc.status === 'Aberto' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                  orc.status === 'Aprovado' ? 'bg-green-50 text-green-700 border-green-200' :
+                                    orc.status === 'Recusado' ? 'bg-red-50 text-red-700 border-red-200' :
+                                      'bg-gray-100 text-gray-600 border-gray-200'
+                              }`}
+                          >
+                            <option value="Rascunho">Rascunho</option>
+                            <option value="Aberto">Aberto</option>
+                            <option value="Aprovado">Aprovado</option>
+                            <option value="Recusado">Recusado</option>
+                          </select>
+                        ) : isVendedor && !isAdmin ? (
+                          <select
+                            value={orc.status}
+                            onChange={(e) => mudarStatus(orc.id, e.target.value)}
+                            className={`px-3 py-1 text-xs font-bold rounded-md border appearance-none outline-none cursor-pointer ${orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                orc.status === 'Aberto' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                  orc.status === 'Aprovado' ? 'bg-green-50 text-green-700 border-green-200' :
+                                    orc.status === 'Recusado' ? 'bg-red-50 text-red-700 border-red-200' :
+                                      'bg-gray-100 text-gray-600 border-gray-200'
+                              }`}
+                          >
+                            <option value="Rascunho">Rascunho</option>
+                            <option value="Aberto">Aberto</option>
+                            <option value="Aprovado" disabled>Aprovado</option>
+                            <option value="Recusado">Recusado</option>
+                          </select>
+                        ) : (
+                          <span className={`px-3 py-1 text-xs font-bold rounded-md border ${orc.status === 'Rascunho' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
                               orc.status === 'Aberto' ? 'bg-blue-50 text-blue-700 border-blue-200' :
                                 orc.status === 'Aprovado' ? 'bg-green-50 text-green-700 border-green-200' :
                                   orc.status === 'Recusado' ? 'bg-red-50 text-red-700 border-red-200' :
                                     'bg-gray-100 text-gray-600 border-gray-200'
-                            }`}
-                        >
-                          <option value="Rascunho">Rascunho</option>
-                          <option value="Aberto">Aberto</option>
-                          <option value="Aprovado" disabled={!isAdmin}>Aprovado</option>
-                          <option value="Recusado" disabled={!isAdmin}>Recusado</option>
-                        </select>
+                            }`}>
+                            {orc.status}
+                          </span>
+                        )}
                       </td>
                       <td className="p-4 text-green-600 font-bold">{formatarMoeda(orc.valor_total)}</td>
 
@@ -900,7 +1052,7 @@ export default function HistoricoOrcamentosPage() {
 
                         {menuAbertoId === orc.id && (
                           <div className={`absolute right-2 w-48 bg-white border border-gray-100 rounded-xl shadow-xl z-50 flex flex-col py-2 animate-fade-in ${menuDirection === 'up' ? 'bottom-12' : 'top-12'}`}>
-                            {orc.status === 'Aprovado' && (
+                            {orc.status === 'Aprovado' && !isFinanceiro && (
                               <>
                                 <button onClick={(e) => { e.stopPropagation(); abrirModalGerarOP(orc); }} className="px-4 py-2.5 text-sm text-left font-bold text-green-700 hover:bg-green-50 flex items-center gap-2">
                                   📄 Gerar O.P.
@@ -915,6 +1067,11 @@ export default function HistoricoOrcamentosPage() {
                                 )}
                               </>
                             )}
+                            {orc.status === 'Aprovado' && isFinanceiro && (
+                              <button onClick={(e) => { e.stopPropagation(); verificarOpECarregar(orc.id, orc.numero_orcamento); }} className="px-4 py-2.5 text-sm text-left font-bold text-green-700 hover:bg-green-50 flex items-center gap-2">
+                                📄 Ver O.P.
+                              </button>
+                            )}
                             <button onClick={(e) => { e.stopPropagation(); visualizarPDF(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg> Ver PDF
                             </button>
@@ -924,21 +1081,25 @@ export default function HistoricoOrcamentosPage() {
                             <button onClick={(e) => { e.stopPropagation(); baixarPDF(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-gray-700 hover:bg-gray-100 flex items-center gap-2">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg> Baixar PDF
                             </button>
-                            <div className="h-px bg-gray-100 my-1 mx-2"></div>
-                            <button onClick={(e) => { e.stopPropagation(); editarOrcamento(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-blue-600 hover:bg-blue-50 flex items-center gap-2">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg> Editar
-                            </button>
-                            <button onClick={(e) => { e.stopPropagation(); clonarOrcamento(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-purple-600 hover:bg-purple-50 flex items-center gap-2">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg> Duplicar
-                            </button>
-                            <div className="h-px bg-gray-100 my-1 mx-2"></div>
-                            <button onClick={(e) => { e.stopPropagation(); deletarOrcamento(orc.id); }} disabled={deletandoId === orc.id} className="px-4 py-2.5 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-wait w-full">
-                              {deletandoId === orc.id ? (
-                                <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Excluindo...</>
-                              ) : (
-                                <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> Excluir</>
-                              )}
-                            </button>
+                            {!isFinanceiro && (
+                              <>
+                                <div className="h-px bg-gray-100 my-1 mx-2"></div>
+                                <button onClick={(e) => { e.stopPropagation(); editarOrcamento(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-blue-600 hover:bg-blue-50 flex items-center gap-2">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg> Editar
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); clonarOrcamento(orc.id); }} className="px-4 py-2.5 text-sm text-left font-medium text-purple-600 hover:bg-purple-50 flex items-center gap-2">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg> Duplicar
+                                </button>
+                                <div className="h-px bg-gray-100 my-1 mx-2"></div>
+                                <button onClick={(e) => { e.stopPropagation(); deletarOrcamento(orc.id); }} disabled={deletandoId === orc.id} className="px-4 py-2.5 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-wait w-full">
+                                  {deletandoId === orc.id ? (
+                                    <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Excluindo...</>
+                                  ) : (
+                                    <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> Excluir</>
+                                  )}
+                                </button>
+                              </>
+                            )}
                           </div>
                         )}
                       </td>
