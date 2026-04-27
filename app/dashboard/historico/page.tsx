@@ -230,13 +230,13 @@ export default function HistoricoOrcamentosPage() {
 
     // Vendedor pode fazer transições específicas: Rascunho→Aberto, Rascunho→Recusado, Aberto→Recusado
     if (isVendedor && !isAdmin) {
-      const transicoesPermitidas = {
+      const transicoesPermitidas: Record<string, string[]> = {
         Rascunho: ["Aberto", "Recusado"],
         Aberto: ["Rascunho", "Recusado"],
         Recusado: ["Rascunho", "Aberto"],
         Aprovado: [],
       };
-      const permitidas = transicoesPermitidas[orc.status as keyof typeof transicoesPermitidas] || [];
+      const permitidas = transicoesPermitidas[orc.status] || [];
       if (!permitidas.includes(novoStatus)) {
         showAlert("Você não tem permissão para fazer essa alteração de status.", { type: "error", title: "Permissão negada" });
         return;
