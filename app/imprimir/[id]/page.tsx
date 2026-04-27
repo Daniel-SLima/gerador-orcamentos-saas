@@ -15,6 +15,8 @@ export default function ImprimirOrcamento() {
   const action = searchParams.get("action") || "view";
 
   const [error, setError] = useState("");
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfNome, setPdfNome] = useState<string>("");
 
   useEffect(() => {
     const processarPDF = async () => {
@@ -41,14 +43,16 @@ export default function ImprimirOrcamento() {
           .from("orcamentos")
           .select(`
             *,
-            clientes ( nome_razao_social, cpf_cnpj, telefone, endereco, contato_nome, rua_numero, bairro, cidade, uf, cep ),
+            clientes ( nome_razao_social, cpf_cnpj, telefone, endereco, contato_nome, rua_numero, bairro, cidade, uf, cep, inscricao_estadual, inscricao_municipal ),
             vendedores ( nome, telefone, email )
           `)
           .eq("id", id);
 
         // C03 — Vendedor só pode ver seus próprios orçamentos
         // Admin e Operador podem ver qualquer orçamento (operadores precisam ver OP de qualquer vendedor)
-        if (!isAdmin && !isOperador) {
+        // Financeiro também pode ver todos os orçamentos
+        const isFinanceiro = funcao === "financeiro";
+        if (!isAdmin && !isOperador && !isFinanceiro) {
           orcamentoQuery = orcamentoQuery.eq("user_id", user.id);
         }
 
@@ -95,17 +99,21 @@ export default function ImprimirOrcamento() {
 
         const blob = await pdf(documento).toBlob();
         const urlCriada = URL.createObjectURL(blob);
+        const nomeArquivo = isOP
+          ? `OP_${String(dadosCompletos.orcamento.numero_orcamento).padStart(5, "0")}.pdf`
+          : `Orcamento_${String(dadosCompletos.orcamento.numero_orcamento).padStart(5, "0")}.pdf`;
 
         if (action === "download") {
           const a = document.createElement("a");
           a.href = urlCriada;
-          a.download = `Orcamento_${String(dadosCompletos.orcamento.numero_orcamento).padStart(5, "0")}.pdf`;
+          a.download = nomeArquivo;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
-          setTimeout(() => window.close(), 100);
+          setTimeout(() => URL.revokeObjectURL(urlCriada), 100);
         } else {
-          window.location.replace(urlCriada);
+          setPdfUrl(urlCriada);
+          setPdfNome(nomeArquivo);
         }
       } catch (error) {
         console.error("Erro:", error);
@@ -120,6 +128,28 @@ export default function ImprimirOrcamento() {
     return (
       <div className="h-screen flex items-center justify-center text-red-500 font-bold bg-gray-900">
         {error}
+      </div>
+    );
+  }
+
+  if (pdfUrl) {
+    return (
+      <div className="h-screen w-full flex flex-col bg-[#323639]">
+        <div className="flex items-center justify-between px-4 py-2 bg-[#404040] border-b border-[#555]">
+          <span className="text-gray-300 text-sm font-medium">{pdfNome}</span>
+          <a
+            href={pdfUrl}
+            download={pdfNome}
+            className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-sm transition-colors"
+          >
+            ⬇ Baixar PDF
+          </a>
+        </div>
+        <iframe
+          src={pdfUrl}
+          className="flex-1 w-full border-none"
+          title={pdfNome}
+        />
       </div>
     );
   }

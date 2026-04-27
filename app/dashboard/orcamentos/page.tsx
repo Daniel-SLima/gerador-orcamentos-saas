@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, Suspense, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import { comprimirImagem } from "../../lib/comprimirImagem";
 import { uploadParaCloudinary, deletarDoCloudinary } from "../../lib/uploadCloudinary";
@@ -9,7 +10,7 @@ import { useSearchParams } from "next/navigation";
 import { usePerfilUsuario } from "../../hooks/usePerfilUsuario";
 
 interface Cliente { id: string; nome_razao_social: string; }
-interface Vendedor { id: string; nome: string; }
+interface Vendedor { id: string; nome: string; user_id?: string; email?: string | null; telefone?: string | null; }
 interface Produto { id: string; descricao: string; valor_unitario: number; medidas: string; }
 
 interface ItemCarrinho {
@@ -52,7 +53,14 @@ function FormularioOrcamento() {
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
   const cloneId = searchParams.get("clone");
-  const { isAdmin } = usePerfilUsuario();
+  const { isAdmin, isVendedor, isFinanceiro, loadingPerfil } = usePerfilUsuario();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loadingPerfil && isFinanceiro) {
+      router.replace("/dashboard/historico");
+    }
+  }, [isFinanceiro, loadingPerfil, router]);
 
   const [loadingDados, setLoadingDados] = useState(true);
   const [salvando, setSalvando] = useState(false);
@@ -62,6 +70,17 @@ function FormularioOrcamento() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
+
+  const [vendedorLogado, setVendedorLogado] = useState<{
+    id: string;
+    nome: string;
+    email: string | null;
+    telefone: string | null;
+  } | null>(null);
+
+  const [nomeVendedorManual, setNomeVendedorManual] = useState("");
+  const [emailVendedorManual, setEmailVendedorManual] = useState("");
+  const [telefoneVendedorManual, setTelefoneVendedorManual] = useState("");
 
   const [dataEmissao, setDataEmissao] = useState(obterDataAtualBrasil());
   const [clienteId, setClienteId] = useState("");
@@ -81,6 +100,9 @@ function FormularioOrcamento() {
   const [valorUnitario, setValorUnitario] = useState<number>(0);
   const [medidas, setMedidas] = useState("");
   const [desconto, setDesconto] = useState<number>(0);
+
+  // 🚀 ESTADO PARA DESCONTO GLOBAL
+  const [descontoTotal, setDescontoTotal] = useState<number>(0);
 
   const [itens, setItens] = useState<ItemCarrinho[]>([]);
   const [modalAberto, setModalAberto] = useState(false);
@@ -124,6 +146,28 @@ function FormularioOrcamento() {
       if (resVendedores.data) setVendedores(resVendedores.data);
       if (resProdutos.data) setProdutos(resProdutos.data as Produto[]);
 
+      // 🚀 AUTO-SELEÇÃO DO VENDEDOR LOGADO
+      if (isVendedor && !editId && !cloneId) {
+        const vendedorLogado = resVendedores.data?.find(v => v.user_id === user.id);
+        if (vendedorLogado) {
+          setVendedorId(vendedorLogado.id);
+        }
+
+        // Busca o próprio registro de vendedor
+        const { data: meuVendedor } = await supabase
+          .from("vendedores")
+          .select("id, nome, email, telefone")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (meuVendedor) {
+          setVendedorId(meuVendedor.id);
+          setVendedorLogado(meuVendedor);
+        } else {
+          setVendedorLogado(null);
+        }
+      }
+
       const targetId = editId || cloneId;
       if (targetId) {
         const { data: orcData } = await supabase.from("orcamentos").select("*").eq("id", targetId).single();
@@ -150,6 +194,9 @@ function FormularioOrcamento() {
           if (orcData.data_emissao) {
             setDataEmissao(orcData.data_emissao.split('T')[0]);
           }
+
+          // 🚀 PUXAR DESCONTO TOTAL DO BANCO
+          setDescontoTotal(Number(orcData.desconto_total) || 0);
         }
 
         if (itensData) {
@@ -322,18 +369,45 @@ function FormularioOrcamento() {
       if (!user) throw new Error("Usuário não autenticado.");
 
       let idFinal = "";
+      let vendedorIdFinal = vendedorId;
+
+      // Cria o registro de vendedor automaticamente se não existir
+      if (!isAdmin && !vendedorLogado && nomeVendedorManual.trim()) {
+        const { data: novoVendedor, error: errVend } = await supabase
+          .from("vendedores")
+          .insert({
+            user_id: user.id,
+            nome: nomeVendedorManual.trim(),
+            email: emailVendedorManual.trim() || null,
+            telefone: telefoneVendedorManual.trim() || null,
+          })
+          .select("id")
+          .single();
+
+        if (!errVend && novoVendedor) {
+          vendedorIdFinal = novoVendedor.id;
+          setVendedorId(novoVendedor.id);
+          setVendedorLogado({
+            id: novoVendedor.id,
+            nome: nomeVendedorManual.trim(),
+            email: emailVendedorManual.trim() || null,
+            telefone: telefoneVendedorManual.trim() || null,
+          });
+        }
+      }
 
       // 🚀 SALVANDO OS NOVOS CAMPOS NO BANCO
       if (editId) {
         let queryUpdate = supabase.from("orcamentos").update({
           cliente_id: clienteId,
-          vendedor_id: vendedorId || null,
-          valor_total: valorTotalOrcamento,
+          vendedor_id: vendedorIdFinal || null,
+          valor_total: valorTotalOrcamento - descontoTotal,
           prazo: prazo,
           forma_pagamento: formaPagamento,
           validade_proposta: validadeProposta,
           observacoes: observacoes,
-          data_emissao: dataEmissao
+          data_emissao: dataEmissao,
+          desconto_total: descontoTotal
         }).eq("id", editId);
 
         if (!isAdmin) {
@@ -349,14 +423,15 @@ function FormularioOrcamento() {
         const { data: orcamentoGerado, error: erroOrc } = await supabase.from("orcamentos").insert([{
           user_id: user.id,
           cliente_id: clienteId,
-          vendedor_id: vendedorId || null,
-          valor_total: valorTotalOrcamento,
+          vendedor_id: vendedorIdFinal || null,
+          valor_total: valorTotalOrcamento - descontoTotal,
           prazo: prazo,
           forma_pagamento: formaPagamento,
           validade_proposta: validadeProposta,
           observacoes: observacoes,
           status: "Aberto",
-          data_emissao: dataEmissao
+          data_emissao: dataEmissao,
+          desconto_total: descontoTotal
         }]).select().single();
 
         if (erroOrc) throw erroOrc;
@@ -523,35 +598,83 @@ function FormularioOrcamento() {
         </div>
 
         <div className="md:col-span-4 relative">
-          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Vendedor Responsável</label>
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Digite para buscar..."
-              value={dropdownVendedorOpen ? buscaVendedor : nomeVendedorSelecionado || ""}
-              onFocus={() => { setDropdownVendedorOpen(true); setBuscaVendedor(""); }}
-              onChange={(e) => { setBuscaVendedor(e.target.value); setDropdownVendedorOpen(true); }}
-              onBlur={() => setTimeout(() => setDropdownVendedorOpen(false), 200)}
-              className="w-full p-3 pr-10 bg-blue-50/50 border border-blue-100 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-blue-900 font-medium cursor-text"
-            />
-            <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
-              <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-            </div>
-            {dropdownVendedorOpen && (
-              <div className="absolute z-50 w-full mt-1 bg-white border border-blue-100 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                <div onClick={() => { setVendedorId(""); setDropdownVendedorOpen(false); }} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-500 font-medium border-b border-gray-100">
-                  -- Selecionar Depois --
-                </div>
-                {vendedoresFiltrados.length > 0 ? vendedoresFiltrados.map(v => (
-                  <div key={v.id} onClick={() => { setVendedorId(v.id); setDropdownVendedorOpen(false); }} className="px-4 py-2.5 hover:bg-blue-50 cursor-pointer text-sm text-gray-800 transition-colors">
-                    {v.nome}
-                  </div>
-                )) : (
-                  <div className="px-4 py-3 text-sm text-gray-500 text-center">Nenhum vendedor encontrado</div>
-                )}
+          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+            Vendedor Responsável
+          </label>
+
+          {isAdmin ? (
+            // Admin vê o select completo com todos os vendedores
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Digite para buscar..."
+                value={dropdownVendedorOpen ? buscaVendedor : nomeVendedorSelecionado || ""}
+                onFocus={() => { setDropdownVendedorOpen(true); setBuscaVendedor(""); }}
+                onChange={(e) => { setBuscaVendedor(e.target.value); setDropdownVendedorOpen(true); }}
+                onBlur={() => setTimeout(() => setDropdownVendedorOpen(false), 200)}
+                className="w-full p-3 pr-10 bg-blue-50/50 border border-blue-100 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-blue-900 font-medium cursor-text"
+              />
+              <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+                <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
               </div>
-            )}
-          </div>
+              {dropdownVendedorOpen && (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-blue-100 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                  <div onClick={() => { setVendedorId(""); setDropdownVendedorOpen(false); }} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-500 font-medium border-b border-gray-100">
+                    -- Selecionar Depois --
+                  </div>
+                  {vendedoresFiltrados.length > 0 ? vendedoresFiltrados.map(v => (
+                    <div key={v.id} onClick={() => { setVendedorId(v.id); setDropdownVendedorOpen(false); }} className="px-4 py-2.5 hover:bg-blue-50 cursor-pointer text-sm text-gray-800 transition-colors">
+                      {v.nome}
+                    </div>
+                  )) : (
+                    <div className="px-4 py-3 text-sm text-gray-500 text-center">Nenhum vendedor encontrado</div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : vendedorLogado ? (
+            // Vendedor vê seus próprios dados (somente leitura)
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="font-bold text-blue-800 text-sm">{vendedorLogado.nome}</p>
+              {vendedorLogado.email && (
+                <p className="text-xs text-blue-600">{vendedorLogado.email}</p>
+              )}
+              {vendedorLogado.telefone && (
+                <p className="text-xs text-blue-500">{vendedorLogado.telefone}</p>
+              )}
+              <p className="text-[10px] text-blue-400 mt-1">
+                Seus dados são preenchidos automaticamente
+              </p>
+            </div>
+          ) : (
+            // Vendedor sem cadastro — campos manuais
+            <div className="space-y-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-xs text-yellow-700 font-medium mb-2">
+                Complete seu cadastro de vendedor para aparecer nos documentos
+              </p>
+              <input
+                type="text"
+                placeholder="Seu nome completo"
+                value={nomeVendedorManual}
+                onChange={e => setNomeVendedorManual(e.target.value)}
+                className="w-full p-2 border border-yellow-300 rounded-lg text-sm"
+              />
+              <input
+                type="email"
+                placeholder="Seu e-mail"
+                value={emailVendedorManual}
+                onChange={e => setEmailVendedorManual(e.target.value)}
+                className="w-full p-2 border border-yellow-300 rounded-lg text-sm"
+              />
+              <input
+                type="tel"
+                placeholder="Seu telefone"
+                value={telefoneVendedorManual}
+                onChange={e => setTelefoneVendedorManual(e.target.value)}
+                className="w-full p-2 border border-yellow-300 rounded-lg text-sm"
+              />
+            </div>
+          )}
         </div>
 
 
@@ -826,10 +949,25 @@ function FormularioOrcamento() {
       {itens.length > 0 && (
         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
           <div className="flex justify-between items-center mb-2 text-gray-500"><span>Subtotal Bruto:</span><span>{formatarMoeda(totalBruto)}</span></div>
-          <div className="flex justify-between items-center mb-3 text-red-500 font-medium"><span>Descontos Aplicados:</span><span>- {formatarMoeda(totalDescontos)}</span></div>
+          <div className="flex justify-between items-center mb-3 text-red-500 font-medium"><span>Descontos por Item:</span><span>- {formatarMoeda(totalDescontos)}</span></div>
+          <div className="flex justify-between items-center mb-3 text-red-600 font-medium border border-red-100 bg-red-50 rounded-lg p-3">
+            <span className="text-sm font-bold uppercase tracking-wide">Desconto Global:</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-red-400">R$</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={descontoTotal}
+                onChange={e => setDescontoTotal(Number(e.target.value))}
+                className="w-28 p-1.5 bg-white border border-red-200 rounded-md text-right font-bold text-red-700 text-sm"
+                placeholder="0,00"
+              />
+            </div>
+          </div>
           <div className="border-t border-dashed border-gray-200 pt-3 flex justify-between items-center">
             <span className="text-gray-800 font-bold uppercase tracking-wider text-sm">Valor Final:</span>
-            <span className="text-2xl font-black text-blue-600">{formatarMoeda(valorTotalOrcamento)}</span>
+            <span className="text-2xl font-black text-blue-600">{formatarMoeda(Math.max(0, valorTotalOrcamento - descontoTotal))}</span>
           </div>
         </div>
       )}

@@ -28,7 +28,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   
   // 🚀 O ganho de performance mágico acontece aqui: isso agora puxa da memória (Cache) instantaneamente!
-  const { isAdmin, isOperador, isDesativado, loadingPerfil } = usePerfilUsuario();
+  const { isAdmin, isOperador, isFinanceiro, isDesativado, loadingPerfil } = usePerfilUsuario();
 
   // =========================================================================
   // 🧹 FAXINA INTELIGENTE DE ANEXOS TEMPORÁRIOS
@@ -99,6 +99,15 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     }
   }, [isOperador, pathname, loadingPerfil, isCheckingAuth, router]);
 
+  // Protege a rota /producao para financeiro (ele não deve acessar)
+  useEffect(() => {
+    if (!loadingPerfil && !isCheckingAuth && isFinanceiro) {
+      if (pathname.startsWith("/dashboard/producao")) {
+        router.replace("/dashboard");
+      }
+    }
+  }, [isFinanceiro, pathname, loadingPerfil, isCheckingAuth, router]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.replace("/");
@@ -111,7 +120,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   ];
 
   // Menu completo para Admin e Vendedor
-  const menuItemsCompleto = [
+  const menuItemsAdminVendedor = [
     { href: "/dashboard", label: "Início", icon: "🏠" },
     ...(isAdmin ? [{ href: "/dashboard/perfil", label: "Minha Empresa", icon: "🏢" }] : []),
     { href: "/dashboard/clientes", label: "Clientes", icon: "👥" },
@@ -123,7 +132,14 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     { href: "/dashboard/mudar-senha", label: "Segurança", icon: "🔒" },
   ];
 
-  const menuItems = isOperador ? menuItemsOperador : menuItemsCompleto;
+  // Menu para Financeiro — vê Dashboard, Histórico (sem produção), mas não cria orçamentos nem gerencia cadastros
+  const menuItemsFinanceiro = [
+    { href: "/dashboard", label: "Início", icon: "🏠" },
+    { href: "/dashboard/historico", label: "Histórico", icon: "🕒" },
+    { href: "/dashboard/mudar-senha", label: "Segurança", icon: "🔒" },
+  ];
+
+  const menuItems = isOperador ? menuItemsOperador : isFinanceiro ? menuItemsFinanceiro : menuItemsAdminVendedor;
 
   // Tela de transição integrada (espera tanto sessão local quanto perfil da nuvem estar pronto)
   if (isCheckingAuth || loadingPerfil) {

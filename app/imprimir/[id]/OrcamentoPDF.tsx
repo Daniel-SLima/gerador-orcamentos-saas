@@ -257,27 +257,45 @@ const styles = StyleSheet.create({
 
 // ─── Sub-componente: Bloco de Assinaturas (Orçamento) ──────────────────────
 
-const BlocoAssinaturas = ({ dados }: { dados: DadosImpressao }) => (
-  <View wrap={false}>
-    <View style={styles.signaturesContainer}>
-      <View style={styles.signatureBlock}>
-        <View style={styles.signatureLine} />
-        <Text style={styles.signatureText}>{dados.empresa?.nome_fantasia || "Assinatura Comercial"}</Text>
-        <Text style={styles.signatureRole}>Departamento Comercial</Text>
+const BlocoAssinaturas = ({ dados }: { dados: DadosImpressao }) => {
+  const vendedor = Array.isArray(dados.orcamento.vendedores)
+    ? dados.orcamento.vendedores[0]
+    : dados.orcamento.vendedores;
+
+  return (
+    <View wrap={false}>
+      <View style={styles.signaturesContainer}>
+        <View style={styles.signatureBlock}>
+          {/* 1. A linha vem primeiro para manter o alinhamento com a assinatura do cliente */}
+          <View style={styles.signatureLine} />
+
+          {/* 2. O nome do vendedor sobe 14px e atua como a assinatura "digital" sobre a linha */}
+          <Text style={[styles.signatureText, { position: "absolute", top: -10, width: "100%" }]}>
+            {vendedor?.nome || dados.empresa?.nome_fantasia || "Assinatura Comercial"}
+          </Text>
+
+          {/* 3. Abaixo da linha fica apenas a identificação do cargo/email */}
+          <Text style={styles.signatureRole}>Vendedor Responsável</Text>
+          {vendedor?.email ? (
+            <Text style={[styles.signatureRole, { marginTop: 2 }]}>
+              {vendedor.email}
+            </Text>
+          ) : null}
+        </View>
+        <View style={styles.signatureBlock}>
+          <View style={styles.signatureLine} />
+          <Text style={styles.signatureText}>{dados.cliente?.nome_razao_social || "Assinatura do Cliente"}</Text>
+          <Text style={styles.signatureRole}>De acordo com os termos</Text>
+        </View>
       </View>
-      <View style={styles.signatureBlock}>
-        <View style={styles.signatureLine} />
-        <Text style={styles.signatureText}>{dados.cliente?.nome_razao_social || "Assinatura do Cliente"}</Text>
-        <Text style={styles.signatureRole}>De acordo com os termos</Text>
+      <View style={{ marginTop: 15, alignItems: "center", paddingHorizontal: 20 }}>
+        <Text style={{ fontSize: 9, color: "#374151", fontStyle: "italic", textAlign: "center" }}>
+          A Salvador Comunicação Visual agradece a solicitação. Estamos à disposição para qualquer dúvida.
+        </Text>
       </View>
     </View>
-    <View style={{ marginTop: 15, alignItems: "center", paddingHorizontal: 20 }}>
-      <Text style={{ fontSize: 9, color: "#374151", fontStyle: "italic", textAlign: "center" }}>
-        A Salvador Comunicação Visual agradece a solicitação. Estamos à disposição para qualquer dúvida.
-      </Text>
-    </View>
-  </View>
-);
+  );
+};
 
 // ─── Componente principal: OrcamentoPDF ────────────────────────────────────
 
@@ -386,6 +404,27 @@ export const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
             <Text style={styles.clientGridCol} />
           </View>
 
+          {(dados.cliente?.inscricao_estadual || dados.cliente?.inscricao_municipal) && (
+            <View style={styles.clientGridRow}>
+              {dados.cliente?.inscricao_estadual ? (
+                <Text style={styles.clientGridCol}>
+                  <Text style={styles.clientLabel}>Insc. Estadual: </Text>
+                  {dados.cliente.inscricao_estadual}
+                </Text>
+              ) : (
+                <Text style={styles.clientGridCol} />
+              )}
+              {dados.cliente?.inscricao_municipal ? (
+                <Text style={styles.clientGridCol}>
+                  <Text style={styles.clientLabel}>Insc. Municipal: </Text>
+                  {dados.cliente.inscricao_municipal}
+                </Text>
+              ) : (
+                <Text style={styles.clientGridCol} />
+              )}
+            </View>
+          )}
+
           <View style={[styles.clientGridRow, { flexDirection: "column" }]}>
             <Text style={{ fontSize: 10, color: "#4b5563", width: "100%", marginBottom: 2 }}>
               <Text style={styles.clientLabel}>Endereço: </Text>
@@ -491,8 +530,17 @@ export const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
 
             {totalDescontos > 0 && (
               <View style={styles.totalRow}>
-                <Text style={styles.totalTextDiscount}>Descontos Aplicados:</Text>
+                <Text style={styles.totalTextDiscount}>Descontos por Item:</Text>
                 <Text style={styles.totalTextDiscount}>- {formatarMoeda(totalDescontos)}</Text>
+              </View>
+            )}
+
+            {Number(dados.orcamento.desconto_total) > 0 && (
+              <View style={styles.totalRow}>
+                <Text style={[styles.totalTextDiscount, { fontWeight: "bold" }]}>Desconto Global:</Text>
+                <Text style={[styles.totalTextDiscount, { fontWeight: "bold" }]}>
+                  - {formatarMoeda(Number(dados.orcamento.desconto_total))}
+                </Text>
               </View>
             )}
 
@@ -583,22 +631,23 @@ export const OrcamentoPDF = ({ dados }: { dados: DadosImpressao }) => {
           pdfImageUrl = pdfImageUrl.replace(/\.webp$/i, ".jpg");
         }
         return (
-        <Page key={`anexo-${idx}`} size="A4" style={styles.page}>
-          {renderHeader(`ANEXO: ${img.file_name}`)}
-          <View style={{ flex: 1, marginVertical: 10, alignItems: "center", justifyContent: "center" }}>
-            <PDFImage
-              src={pdfImageUrl}
-              style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+          <Page key={`anexo-${idx}`} size="A4" style={styles.page}>
+            {renderHeader(`ANEXO: ${img.file_name}`)}
+            <View style={{ flex: 1, marginVertical: 10, alignItems: "center", justifyContent: "center" }}>
+              <PDFImage
+                src={pdfImageUrl}
+                style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+              />
+            </View>
+            <BlocoAssinaturas dados={dados} />
+            <Text
+              render={({ pageNumber, totalPages }) => `Página ${pageNumber} de ${totalPages}`}
+              fixed
+              style={styles.pageNumber}
             />
-          </View>
-          <BlocoAssinaturas dados={dados} />
-          <Text
-            render={({ pageNumber, totalPages }) => `Página ${pageNumber} de ${totalPages}`}
-            fixed
-            style={styles.pageNumber}
-          />
-        </Page>
-      )})}
+          </Page>
+        )
+      })}
     </Document>
   );
 };

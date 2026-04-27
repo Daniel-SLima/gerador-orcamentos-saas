@@ -11,6 +11,8 @@ export interface Cliente {
   cidade?: string;
   uf?: string;
   cep?: string;
+  inscricao_estadual?: string;
+  inscricao_municipal?: string;
 }
 
 export interface Vendedor {
@@ -58,6 +60,7 @@ export interface Orcamento {
   endereco_obra?: string;
   contato_obra?: string;
   validade_proposta?: string;
+  desconto_total?: number;
 }
 
 export interface Anexo {

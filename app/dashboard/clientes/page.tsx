@@ -12,11 +12,13 @@ interface Cliente {
   contato_nome: string;
   telefone: string;
   endereco: string;
-  cep?: string; // 🚀 Adicionado CEP
+  cep?: string;
   uf: string;
   cidade: string;
   bairro: string;
   rua_numero: string;
+  inscricao_estadual?: string;
+  inscricao_municipal?: string;
 }
 
 interface EstadoIBGE {
@@ -120,7 +122,11 @@ export default function ClientesPage() {
   const [bairro, setBairro] = useState("");
   const [rua, setRua] = useState("");
   const [numero, setNumero] = useState("");
-  
+
+  // 🚀 NOVOS CAMPOS IE/IM
+  const [inscricaoEstadual, setInscricaoEstadual] = useState("");
+  const [inscricaoMunicipal, setInscricaoMunicipal] = useState("");
+
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
   const [termoBusca, setTermoBusca] = useState("");
   
@@ -283,17 +289,20 @@ export default function ClientesPage() {
       const enderecoConcatenado = `${ruaNumeroCombinado}, ${bairro} - ${cidade}/${uf}`;
 
       const dadosParaSalvar = {
-        nome_razao_social: nomeRazaoSocial, 
-        cpf_cnpj: cpfCnpj, 
-        contato_nome: contatoNome, 
+        nome_razao_social: nomeRazaoSocial,
+        cpf_cnpj: cpfCnpj,
+        contato_nome: contatoNome,
         telefone: telefone,
         cep: cep,
         uf: uf,
         cidade: cidade,
         bairro: bairro,
         rua_numero: ruaNumeroCombinado,
-        endereco: enderecoConcatenado, 
-        user_id: user.id 
+        endereco: enderecoConcatenado,
+        user_id: user.id,
+        // 🚀 NOVOS CAMPOS IE/IM
+        inscricao_estadual: inscricaoEstadual.trim() || null,
+        inscricao_municipal: inscricaoMunicipal.trim() || null,
       };
 
       if (clienteEditandoId) {
@@ -332,7 +341,11 @@ export default function ClientesPage() {
     const pRua = rNum.split(",");
     setRua(pRua[0]?.trim() || "");
     setNumero(pRua.slice(1).join(",").trim() || "");
-    
+
+    // 🚀 NOVOS CAMPOS IE/IM
+    setInscricaoEstadual(cliente.inscricao_estadual || "");
+    setInscricaoMunicipal(cliente.inscricao_municipal || "");
+
     setMenuAbertoId(null);
     setFormularioAberto(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -350,6 +363,9 @@ export default function ClientesPage() {
     setBairro("");
     setRua("");
     setNumero("");
+    // 🚀 NOVOS CAMPOS IE/IM
+    setInscricaoEstadual("");
+    setInscricaoMunicipal("");
     setFormularioAberto(false); // fecha ao cancelar
   };
 
@@ -458,7 +474,36 @@ export default function ClientesPage() {
               value={cep} 
               onChange={(e) => buscarCep(e.target.value)} 
               className="w-full px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-600 outline-none transition-all text-blue-900 font-medium" 
-              placeholder="00000-000" 
+              placeholder="00000-000"
+            />
+          </div>
+
+          {/* 🚀 NOVOS CAMPOS: Inscrição Estadual e Municipal */}
+          <div className="md:col-span-12 lg:col-span-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Inscrição Estadual (IE)
+              <span className="ml-1.5 text-xs font-normal text-gray-400">— opcional</span>
+            </label>
+            <input
+              type="text"
+              value={inscricaoEstadual}
+              onChange={(e) => setInscricaoEstadual(e.target.value)}
+              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-600 outline-none transition-all"
+              placeholder="Ex: 123.456.789.000"
+            />
+          </div>
+
+          <div className="md:col-span-12 lg:col-span-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Inscrição Municipal (IM)
+              <span className="ml-1.5 text-xs font-normal text-gray-400">— opcional</span>
+            </label>
+            <input
+              type="text"
+              value={inscricaoMunicipal}
+              onChange={(e) => setInscricaoMunicipal(e.target.value)}
+              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-600 outline-none transition-all"
+              placeholder="Ex: 00123456/001-45"
             />
           </div>
 

@@ -25,6 +25,16 @@ interface ItemOP {
   registros_checklist: RegistroChecklist[];
 }
 
+interface Subitem {
+  id: string;
+  item_op_id: string;
+  nome: string;
+  concluido: boolean;
+  concluido_por: string | null;
+  concluido_em: string | null;
+  created_at: string;
+}
+
 interface OpCompleta {
   id: string;
   numero_op: number;
@@ -75,6 +85,12 @@ export default function ProducaoDetalhePage() {
   const [obsTexto, setObsTexto] = useState("");
   const [salvandoObs, setSalvandoObs] = useState(false);
   const [cancelando, setCancelando] = useState(false);
+
+  // 🚀 ESTADOS PARA SUBITENS (somente leitura para admin)
+  const [modalSubitensAberto, setModalSubitensAberto] = useState(false);
+  const [itemOpSelecionado, setItemOpSelecionado] = useState<ItemOP | null>(null);
+  const [subitens, setSubitens] = useState<Subitem[]>([]);
+  const [carregandoSubitens, setCarregandoSubitens] = useState(false);
 
   const id = params.id as string;
 
@@ -203,6 +219,47 @@ export default function ProducaoDetalhePage() {
       return acc + pos;
     }, 0);
     return Math.round((somaProgresso / (op.itens_op.length * TOTAL_ETAPAS)) * 100);
+  };
+
+  // 🚀 FUNÇÕES PARA SUBITENS
+  const abrirModalSubitens = async (item: ItemOP) => {
+    setItemOpSelecionado(item);
+    setModalSubitensAberto(true);
+    setCarregandoSubitens(true);
+    try {
+      const { data } = await supabase
+        .from("subitens_op")
+        .select("*")
+        .eq("item_op_id", item.id)
+        .order("created_at");
+      setSubitens(data || []);
+    } catch (err) {
+      console.error("Erro ao carregar subitens:", err);
+    } finally {
+      setCarregandoSubitens(false);
+    }
+  };
+
+  const toggleSubitem = async (subitem: Subitem) => {
+    const novoConcluido = !subitem.concluido;
+    const { data: { user } } = await supabase.auth.getUser();
+    await supabase.from("subitens_op").update({
+      concluido: novoConcluido,
+      concluido_por: novoConcluido ? user?.id : null,
+      concluido_em: novoConcluido ? new Date().toISOString() : null,
+    }).eq("id", subitem.id);
+
+    const atualizados = subitens.map(s => s.id === subitem.id ? { ...s, concluido: novoConcluido } : s);
+    setSubitens(atualizados);
+
+    // Se todos foram concluídos, marca o item pai como concluido
+    if (atualizados.every((s: Subitem) => s.concluido) && atualizados.length === itemOpSelecionado.quantidade) {
+      await supabase.from("itens_op").update({ status_item: "concluido" }).eq("id", itemOpSelecionado.id);
+      setOp(prev => prev ? {
+        ...prev,
+        itens_op: prev.itens_op.map(i => i.id === itemOpSelecionado.id ? { ...i, status_item: "concluido" } : i)
+      } : null);
+    }
   };
 
   if (loading || loadingPerfil) {
@@ -353,8 +410,10 @@ export default function ProducaoDetalhePage() {
         </div>
 
         <div className="divide-y divide-gray-50">
-          {op.itens_op?.map(item => {
+          {op.itens_op?.map((item, itemIndex) => {
             const expandido = itemExpandido === item.id;
+            // Letra do item: 0 → A, 1 → B, etc.
+            const letraItem = String.fromCharCode(65 + itemIndex);
             const registroAnterior = item.setor_atual !== "aguardando" && item.setor_atual !== "concluido"
               ? SETORES[SETORES.indexOf(item.setor_atual) - 1]
               : null;
@@ -366,6 +425,11 @@ export default function ProducaoDetalhePage() {
                   onClick={() => setItemExpandido(expandido ? null : item.id)}
                 >
                   <div className="flex items-center gap-3">
+                    {/* Letra do item */}
+                    <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                      <span className="text-xs font-black text-blue-700">{letraItem}</span>
+                    </div>
+
                     {/* Imagem */}
                     {item.imagem_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -378,6 +442,12 @@ export default function ProducaoDetalhePage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-gray-900 truncate">{item.descricao}</p>
                       <p className="text-xs text-gray-400">{item.quantidade}x {item.medidas || "sem medidas"}</p>
+                      <button
+                          onClick={(e) => { e.stopPropagation(); abrirModalSubitens(item); }}
+                          className="mt-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                        >
+                          📋 Ver subitens
+                        </button>
                     </div>
 
                     {/* Badge do setor atual */}
@@ -426,6 +496,94 @@ export default function ProducaoDetalhePage() {
           })}
         </div>
       </div>
+
+      {/* 🚀 MODAL DE SUBITENS — Somente leitura para Admin */}
+      {modalSubitensAberto && itemOpSelecionado && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+            <div className="p-5 border-b flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-gray-900 truncate max-w-[300px]">
+                  {itemOpSelecionado.descricao}
+                </h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {subitens.filter(s => s.concluido).length}/{subitens.length} subitens concluídos
+                </p>
+                {/* Barra de progresso dos subitens */}
+                {subitens.length > 0 && (
+                  <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2">
+                    <div
+                      className="h-1.5 rounded-full bg-green-500 transition-all"
+                      style={{
+                        width: `${Math.round((subitens.filter(s => s.concluido).length / subitens.length) * 100)}%`
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setModalSubitensAberto(false)}
+                className="text-gray-400 hover:text-red-500 text-2xl ml-4 shrink-0"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="p-5 space-y-2 max-h-72 overflow-y-auto">
+              {carregandoSubitens ? (
+                <p className="text-center text-gray-500 py-4">Carregando...</p>
+              ) : subitens.length === 0 ? (
+                <div className="text-center py-6">
+                  <p className="text-gray-400 text-sm">
+                    Nenhum subitem cadastrado para este produto.
+                  </p>
+                  <p className="text-gray-300 text-xs mt-1">
+                    Adicione subitens no cadastro do produto para que apareçam aqui.
+                  </p>
+                </div>
+              ) : (
+                subitens.map(s => (
+                  <div
+                    key={s.id}
+                    className={`flex items-center gap-3 p-3 rounded-lg border ${
+                      s.concluido
+                        ? "bg-green-50 border-green-200"
+                        : "bg-gray-50 border-gray-100"
+                    }`}
+                  >
+                    {/* Ícone de status — somente leitura */}
+                    <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 border-2 ${
+                      s.concluido ? "bg-green-500 border-green-500" : "bg-white border-gray-300"
+                    }`}>
+                      {s.concluido && (
+                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className={`text-sm ${s.concluido ? "line-through text-gray-400" : "text-gray-800 font-medium"}`}>
+                        {s.nome}
+                      </span>
+                      {s.concluido && s.concluido_em && (
+                        <p className="text-xs text-green-600 mt-0.5">
+                          ✅ {new Date(s.concluido_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+              <p className="text-xs text-gray-400 text-center">
+                Os checks são feitos pelos operadores na tela de Setor.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AlertModal {...alertProps} />
       <ConfirmModal {...confirmProps} />

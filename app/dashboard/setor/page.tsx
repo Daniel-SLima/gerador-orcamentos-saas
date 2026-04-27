@@ -33,6 +33,15 @@ interface OPResumida {
   total_itens: number;
 }
 
+interface SubitemOP {
+  id: string;
+  item_op_id: string;
+  nome: string;
+  concluido: boolean;
+  concluido_por: string | null;
+  concluido_em: string | null;
+}
+
 const SETORES = ["metalurgia", "impressao", "plotagem", "instalacao", "embalagem"];
 const SETORES_LABELS: Record<string, string> = {
   metalurgia: "Metalurgia",
@@ -56,6 +65,11 @@ export default function SetorPage() {
   const [loading, setLoading] = useState(true);
   const [processando, setProcessando] = useState<string | null>(null);
   const [scrolled, setScrolled] = useState(false);
+
+  // ── SUBITENS ──
+  const [subitensMap, setSubitensMap] = useState<Record<string, SubitemOP[]>>({});
+  const [expandedSubitens, setExpandedSubitens] = useState<Record<string, boolean>>({});
+  const [togglingSubitem, setTogglingSubitem] = useState<string | null>(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -198,14 +212,55 @@ export default function SetorPage() {
 
       const { data, error } = await query.order("created_at", { ascending: true });
       if (error) throw error;
-      setItensDaOp((data as unknown as ItemOP[]) || []);
+      const itens = (data as unknown as ItemOP[]) || [];
+      setItensDaOp(itens);
       setOpSelecionada(op);
       setModalAberto(false);
+      // Carrega subitens de todos os itens desta OP
+      await carregarSubitensDaOP(op.op_id, itens);
     } catch (err) {
       console.error("Erro ao carregar itens da OP:", err);
     } finally {
       setLoading(false);
     }
+  };
+
+  // ── FUNÇÕES DE SUBITENS ──
+  const carregarSubitensDaOP = async (opId: string, itens: ItemOP[]) => {
+    if (itens.length === 0) return;
+    const itemIds = itens.map(i => i.id);
+    const { data } = await supabase
+      .from("subitens_op")
+      .select("*")
+      .in("item_op_id", itemIds);
+
+    if (data) {
+      const mapa: Record<string, SubitemOP[]> = {};
+      itemIds.forEach(id => { mapa[id] = []; });
+      data.forEach((s: SubitemOP) => {
+        if (mapa[s.item_op_id]) mapa[s.item_op_id].push(s);
+      });
+      setSubitensMap(mapa);
+    }
+  };
+
+  const toggleSubitemSetor = async (subitem: SubitemOP) => {
+    if (!userId) return;
+    setTogglingSubitem(subitem.id);
+    const novoConcluido = !subitem.concluido;
+    await supabase.from("subitens_op").update({
+      concluido: novoConcluido,
+      concluido_por: novoConcluido ? userId : null,
+      concluido_em: novoConcluido ? new Date().toISOString() : null,
+    }).eq("id", subitem.id);
+
+    setSubitensMap(prev => ({
+      ...prev,
+      [subitem.item_op_id]: prev[subitem.item_op_id].map(s =>
+        s.id === subitem.id ? { ...s, concluido: novoConcluido } : s
+      ),
+    }));
+    setTogglingSubitem(null);
   };
 
   const receberItem = async (item: ItemOP) => {
@@ -608,6 +663,68 @@ export default function SetorPage() {
                       <span className="text-blue-400 font-black text-base">{item.quantidade}x</span>
                       {" "} {item.medidas ? ` ${item.medidas}` : ""}
                     </p>
+
+                    {/* ── SUBITENS DO ITEM ── */}
+                    {subitensMap[item.id] && subitensMap[item.id].length > 0 && (
+                      <div className="mt-2">
+                        {/* Toggle para expandir/colapsar subitens */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedSubitens(prev => ({ ...prev, [item.id]: !prev[item.id] }));
+                          }}
+                          className="w-full flex items-center justify-between text-xs text-gray-400 hover:text-gray-200 transition-colors py-1"
+                        >
+                          <span className="font-semibold">
+                            ✅ {subitensMap[item.id].filter(s => s.concluido).length}/{subitensMap[item.id].length} subitens
+                          </span>
+                          <svg
+                            className={`w-3 h-3 transition-transform ${expandedSubitens[item.id] ? "rotate-180" : ""}`}
+                            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+
+                        {/* Mini barra de progresso dos subitens */}
+                        <div className="w-full bg-gray-700 rounded-full h-1 mb-1">
+                          <div
+                            className="h-1 rounded-full bg-green-500 transition-all"
+                            style={{
+                              width: `${Math.round(
+                                (subitensMap[item.id].filter(s => s.concluido).length / subitensMap[item.id].length) * 100
+                              )}%`
+                            }}
+                          />
+                        </div>
+
+                        {/* Lista de subitens (expandível) */}
+                        {expandedSubitens[item.id] && (
+                          <div className="space-y-1 mt-1">
+                            {subitensMap[item.id].map(subitem => (
+                              <label
+                                key={subitem.id}
+                                className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
+                                  subitem.concluido ? "bg-green-900/30" : "bg-gray-700/50 hover:bg-gray-700"
+                                }`}
+                                onClick={e => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={subitem.concluido}
+                                  disabled={togglingSubitem === subitem.id}
+                                  onChange={() => toggleSubitemSetor(subitem)}
+                                  className="w-4 h-4 accent-green-500 shrink-0"
+                                />
+                                <span className={`text-xs leading-tight ${subitem.concluido ? "line-through text-gray-500" : "text-gray-200"}`}>
+                                  {subitem.nome}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Botão único: Recebi (pendente) ou Finalizei e Entreguei (em_andamento) */}
                     {pendente ? (

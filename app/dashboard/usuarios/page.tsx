@@ -35,7 +35,7 @@ export default function UsuariosPage() {
 
   // Filtros
   const [busca, setBusca] = useState("");
-  const [filtroFuncao, setFiltroFuncao] = useState<"todos" | "admin" | "vendedor" | "operador">("todos");
+  const [filtroFuncao, setFiltroFuncao] = useState<"todos" | "admin" | "vendedor" | "operador" | "financeiro">("todos");
 
   // Convite Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -210,7 +210,8 @@ export default function UsuariosPage() {
     const admins = usuarios.filter(u => u.funcao === "admin").length;
     const vendedores = usuarios.filter(u => u.funcao === "vendedor").length;
     const operadores = usuarios.filter(u => u.funcao === "operador").length;
-    return { total, admins, vendedores, operadores };
+    const financeiros = usuarios.filter(u => u.funcao === "financeiro").length;
+    return { total, admins, vendedores, operadores, financeiros };
   };
 
   const abrirEditModal = (usuario: PerfilUsuario) => {
@@ -246,7 +247,7 @@ export default function UsuariosPage() {
     return matchesBusca && matchesFuncao;
   });
 
-  const { total, admins, vendedores, operadores } = getEstatisticas();
+  const { total, admins, vendedores, operadores, financeiros } = getEstatisticas();
 
   if (loadingPerfil || loading) {
     return (
@@ -307,6 +308,12 @@ export default function UsuariosPage() {
           </div>
           <div><p className="text-sm font-semibold text-gray-500 uppercase">Operadores</p><p className="text-2xl font-bold text-gray-900">{operadores}</p></div>
         </div>
+        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4 border-l-[4px] border-l-emerald-500">
+          <div className="bg-emerald-50 w-12 h-12 rounded-full flex items-center justify-center text-emerald-600">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          </div>
+          <div><p className="text-sm font-semibold text-gray-500 uppercase">Financeiro</p><p className="text-2xl font-bold text-gray-900">{financeiros}</p></div>
+        </div>
       </div>
 
       {/* Toolbar */}
@@ -328,6 +335,7 @@ export default function UsuariosPage() {
           <button onClick={() => setFiltroFuncao("admin")} className={`px-4 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${filtroFuncao === "admin" ? "bg-white text-purple-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Admins</button>
           <button onClick={() => setFiltroFuncao("vendedor")} className={`px-4 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${filtroFuncao === "vendedor" ? "bg-white text-blue-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Vendedores</button>
           <button onClick={() => setFiltroFuncao("operador")} className={`px-4 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${filtroFuncao === "operador" ? "bg-white text-orange-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Operadores</button>
+          <button onClick={() => setFiltroFuncao("financeiro")} className={`px-4 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${filtroFuncao === "financeiro" ? "bg-white text-emerald-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Financeiro</button>
         </div>
       </div>
 
@@ -370,9 +378,10 @@ export default function UsuariosPage() {
                         isAdminRole ? "bg-purple-50 text-purple-700 border-purple-200" :
                         usuario.funcao === "desativado" ? "bg-gray-100 text-gray-500 border-gray-300" :
                         usuario.funcao === "operador" ? "bg-orange-50 text-orange-700 border-orange-200" :
+                        usuario.funcao === "financeiro" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
                         "bg-blue-50 text-blue-700 border-blue-200"
                       }`}>
-                        {isAdminRole ? "🛡️ Admin" : usuario.funcao === "desativado" ? "🚫 Desativado" : usuario.funcao === "operador" ? "🏭 Operador" : "💼 Vendedor"}
+                        {isAdminRole ? "🛡️ Admin" : usuario.funcao === "desativado" ? "🚫 Desativado" : usuario.funcao === "operador" ? "🏭 Operador" : usuario.funcao === "financeiro" ? "💰 Financeiro" : "💼 Vendedor"}
                       </span>
                       {usuario.funcao === "operador" && usuario.setor && (
                         <span className="text-xs text-orange-600 font-medium capitalize">{usuario.setor}</span>
@@ -573,8 +582,8 @@ export default function UsuariosPage() {
 
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Função</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {["admin", "vendedor", "operador"].map(f => (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {["admin", "vendedor", "operador", "financeiro"].map(f => (
                     <button
                       key={f}
                       type="button"
@@ -583,11 +592,12 @@ export default function UsuariosPage() {
                         editFuncao === f
                           ? f === "admin" ? "bg-purple-100 border-purple-300 text-purple-700"
                           : f === "operador" ? "bg-orange-100 border-orange-300 text-orange-700"
+                          : f === "financeiro" ? "bg-emerald-100 border-emerald-300 text-emerald-700"
                           : "bg-blue-100 border-blue-300 text-blue-700"
                           : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
                       }`}
                     >
-                      {f === "admin" ? "🛡️" : f === "operador" ? "🏭" : "💼"} {f}
+                      {f === "admin" ? "🛡️" : f === "operador" ? "🏭" : f === "financeiro" ? "💰" : "💼"} {f}
                     </button>
                   ))}
                 </div>

@@ -38,6 +38,13 @@ interface OrcamentoVinculado {
   cliente_nome: string;
 }
 
+interface SubitemProduto {
+  id: string;
+  produto_id: string;
+  nome: string;
+  ordem: number;
+}
+
 export default function ProdutosPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,6 +99,15 @@ export default function ProdutosPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
+
+  // ── SUBITENS DE PRODUTO ──
+  const [modalSubitensProduto, setModalSubitensProduto] = useState<{
+    aberto: boolean;
+    produto: Produto | null;
+    subitens: SubitemProduto[];
+    loading: boolean;
+    novoNome: string;
+  }>({ aberto: false, produto: null, subitens: [], loading: false, novoNome: "" });
 
   // 🚀 NOVO ESTADO: Termo de Busca
   const [termoBusca, setTermoBusca] = useState("");
@@ -395,6 +411,44 @@ export default function ProdutosPage() {
     else setMenuAbertoId(id);
   };
 
+  // ── FUNÇÕES DE SUBITENS DE PRODUTO ──
+
+  const abrirModalSubitensProduto = async (produto: Produto) => {
+    setMenuAbertoId(null);
+    setModalSubitensProduto({ aberto: true, produto, subitens: [], loading: true, novoNome: "" });
+    const { data } = await supabase
+      .from("subitens_produto")
+      .select("*")
+      .eq("produto_id", produto.id)
+      .order("ordem", { ascending: true });
+    setModalSubitensProduto(prev => ({ ...prev, subitens: data || [], loading: false }));
+  };
+
+  const adicionarSubitemProduto = async () => {
+    const { produto, novoNome, subitens } = modalSubitensProduto;
+    if (!produto || !novoNome.trim()) return;
+    const { data } = await supabase
+      .from("subitens_produto")
+      .insert({ produto_id: produto.id, nome: novoNome.trim(), ordem: subitens.length })
+      .select()
+      .single();
+    if (data) {
+      setModalSubitensProduto(prev => ({
+        ...prev,
+        subitens: [...prev.subitens, data],
+        novoNome: "",
+      }));
+    }
+  };
+
+  const removerSubitemProduto = async (subitemId: string) => {
+    await supabase.from("subitens_produto").delete().eq("id", subitemId);
+    setModalSubitensProduto(prev => ({
+      ...prev,
+      subitens: prev.subitens.filter(s => s.id !== subitemId),
+    }));
+  };
+
   const formatarMoeda = (valor: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
   };
@@ -625,6 +679,7 @@ export default function ProdutosPage() {
                       {menuAbertoId === produto.id && (
                         <div className="absolute right-0 top-6 w-36 bg-white border border-gray-100 rounded-xl shadow-xl z-50 flex flex-col py-1 animate-fade-in">
                           <button onClick={(e) => { e.stopPropagation(); iniciarEdicao(produto); }} className="px-4 py-2 text-sm text-left font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg> Editar</button>
+                          <button onClick={(e) => { e.stopPropagation(); abrirModalSubitensProduto(produto); }} className="px-4 py-2 text-sm text-left font-medium text-blue-600 hover:bg-blue-50 flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg> Subitens</button>
                           <div className="h-px bg-gray-100 my-1 mx-2"></div>
                           <button onClick={(e) => { e.stopPropagation(); deletarProduto(produto); }} className="px-4 py-2 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> Excluir</button>
                         </div>
@@ -685,6 +740,7 @@ export default function ProdutosPage() {
                         {menuAbertoId === produto.id && (
                           <div className="absolute right-8 top-10 w-36 bg-white border border-gray-100 rounded-xl shadow-xl z-50 flex flex-col py-1 animate-fade-in">
                             <button onClick={(e) => { e.stopPropagation(); iniciarEdicao(produto); }} className="px-4 py-2 text-sm text-left font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg> Editar</button>
+                            <button onClick={(e) => { e.stopPropagation(); abrirModalSubitensProduto(produto); }} className="px-4 py-2 text-sm text-left font-medium text-blue-600 hover:bg-blue-50 flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg> Subitens</button>
                             <div className="h-px bg-gray-100 my-1 mx-2"></div>
                             <button onClick={(e) => { e.stopPropagation(); deletarProduto(produto); }} className="px-4 py-2 text-sm text-left font-medium text-red-600 hover:bg-red-50 flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> Excluir</button>
                           </div>
@@ -702,6 +758,87 @@ export default function ProdutosPage() {
       {/* Modais customizados */}
       <AlertModal {...alertProps} />
       <ConfirmModal {...confirmProps} />
+
+      {/* ── MODAL DE SUBITENS DO PRODUTO ── */}
+      {modalSubitensProduto.aberto && modalSubitensProduto.produto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            {/* Header */}
+            <div className="bg-blue-50 border-b border-blue-100 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-gray-900 text-base">Subitens de Produção</h3>
+                <p className="text-xs text-gray-500 mt-0.5 truncate max-w-[280px]">
+                  {modalSubitensProduto.produto.descricao}
+                </p>
+              </div>
+              <button
+                onClick={() => setModalSubitensProduto(prev => ({ ...prev, aberto: false }))}
+                className="text-gray-400 hover:text-gray-700 p-1 rounded-lg"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Info */}
+            <div className="px-6 pt-4 pb-2">
+              <p className="text-xs text-gray-500 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                💡 Esses subitens serão copiados automaticamente para a OP quando este produto for aprovado. Os operadores poderão dar check em cada um na tela de Setor.
+              </p>
+            </div>
+
+            {/* Lista de subitens */}
+            <div className="px-6 py-3 max-h-64 overflow-y-auto space-y-2">
+              {modalSubitensProduto.loading ? (
+                <p className="text-center text-gray-400 text-sm py-4">Carregando...</p>
+              ) : modalSubitensProduto.subitens.length === 0 ? (
+                <p className="text-center text-gray-400 text-sm py-4">
+                  Nenhum subitem cadastrado ainda. Adicione abaixo.
+                </p>
+              ) : (
+                modalSubitensProduto.subitens.map((s, idx) => (
+                  <div key={s.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-2.5 border border-gray-100">
+                    <div className="flex items-center gap-3">
+                      <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center shrink-0">
+                        {idx + 1}
+                      </span>
+                      <span className="text-sm font-medium text-gray-800">{s.nome}</span>
+                    </div>
+                    <button
+                      onClick={() => removerSubitemProduto(s.id)}
+                      className="text-gray-300 hover:text-red-500 transition-colors p-1 rounded"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Input para novo subitem */}
+            <div className="px-6 pb-6 pt-2 flex gap-2">
+              <input
+                type="text"
+                value={modalSubitensProduto.novoNome}
+                onChange={e => setModalSubitensProduto(prev => ({ ...prev, novoNome: e.target.value }))}
+                onKeyDown={e => e.key === "Enter" && adicionarSubitemProduto()}
+                placeholder="Ex: Corte, Solda, Pintura..."
+                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              <button
+                onClick={adicionarSubitemProduto}
+                disabled={!modalSubitensProduto.novoNome.trim()}
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-bold rounded-lg text-sm transition-colors"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de produto vinculado a orçamentos */}
       {modalVinculos.aberto && modalVinculos.produto && (

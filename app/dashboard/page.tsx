@@ -8,6 +8,9 @@ import { usePerfilUsuario } from "../hooks/usePerfilUsuario";
 interface ResumoDashboard {
   totalOrcamentos: number;
   valorTotal: number;
+  valorAbertos: number;      // ← NOVO
+  valorAprovados: number;    // ← NOVO
+  totalAbertos: number;      // ← NOVO
   totalRascunhos: number;
   totalAprovados: number;
   totalReprovados: number;
@@ -27,7 +30,7 @@ interface UltimoOrcamento {
 }
 
 export default function DashboardPage() {
-  const [resumo, setResumo] = useState<ResumoDashboard>({ totalOrcamentos: 0, valorTotal: 0, totalRascunhos: 0, totalAprovados: 0, totalReprovados: 0 });
+  const [resumo, setResumo] = useState<ResumoDashboard>({ totalOrcamentos: 0, valorTotal: 0, valorAbertos: 0, valorAprovados: 0, totalAbertos: 0, totalRascunhos: 0, totalAprovados: 0, totalReprovados: 0 });
   const [ultimosOrcamentos, setUltimosOrcamentos] = useState<UltimoOrcamento[]>([]);
   const [todosOrcamentosBrutos, setTodosOrcamentosBrutos] = useState<UltimoOrcamento[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +39,7 @@ export default function DashboardPage() {
   const [resumoVendedor, setResumoVendedor] = useState({
     valorAberto: 0,
     valorAprovado: 0,
+    valorRecusado: 0,
     qtdAberto: 0,
     qtdAprovado: 0,
     qtdRascunho: 0,
@@ -43,6 +47,9 @@ export default function DashboardPage() {
   });
   const [orcamentosAguardando, setOrcamentosAguardando] = useState<UltimoOrcamento[]>([]);
   const [orcamentosAprovados, setOrcamentosAprovados] = useState<UltimoOrcamento[]>([]);
+  const [orcamentosRecusados, setOrcamentosRecusados] = useState<UltimoOrcamento[]>([]);
+  const [orcamentosRascunhos, setOrcamentosRascunhos] = useState<UltimoOrcamento[]>([]);
+  const [abaVendedor, setAbaVendedor] = useState<"abertos" | "aprovados" | "recusados" | "rascunhos">("abertos");
   const [opsVendedor, setOpsVendedor] = useState<{
     id: string;
     numero_op: number;
@@ -62,21 +69,21 @@ export default function DashboardPage() {
   const [mesSelecionado, setMesSelecionado] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [diaSelecionado, setDiaSelecionado] = useState(new Date().toISOString().slice(0, 10)); // YYYY-MM-DD
 
-  const { isAdmin, emailUsuario, loadingPerfil } = usePerfilUsuario();
+  const { isAdmin, isFinanceiro, emailUsuario, loadingPerfil } = usePerfilUsuario();
 
-  // Extrai o nome de exibição a partir do e-mail (tudo antes do @)
-  const nomeExibicao = emailUsuario ? emailUsuario.split("@")[0] : null;
+  // Extrai o nome de exibição a partir do e-mail (tudo antes do @) — pode ser sobrescrito pelo nome do vendedor
+  const [nomeExibicao, setNomeExibicao] = useState<string | null>(emailUsuario ? emailUsuario.split("@")[0] : null);
 
   useEffect(() => {
     if (!loadingPerfil) {
-      if (isAdmin) {
+      if (isAdmin || isFinanceiro) {
         carregarDashboard();
       } else {
         // Vendedor carrega seu próprio dashboard
         carregarDashboardVendedor().finally(() => setLoading(false));
       }
     }
-  }, [loadingPerfil, isAdmin]);
+  }, [loadingPerfil, isAdmin, isFinanceiro]);
 
   // 🚀 RECALCULA TUDO AUTOMATICAMENTE QUANDO O FILTRO MUDA
   useEffect(() => {
@@ -97,19 +104,27 @@ export default function DashboardPage() {
       return true;
     });
 
-    // 💰 VALOR TOTAL: apenas Aprovado + Aberto
-    const orcAtivos = orcamentosFiltrados.filter(orc => orc.status === "Aprovado" || orc.status === "Aberto");
-    const valor = orcAtivos.reduce((acc, curr) => acc + Number(curr.valor_total), 0);
+    // 💰 VALORES SEPARADOS
+    const orcAbertos = orcamentosFiltrados.filter(orc => orc.status === "Aberto");
+    const orcAprovados = orcamentosFiltrados.filter(orc => orc.status === "Aprovado");
+
+    const valorAbertos = orcAbertos.reduce((acc, curr) => acc + Number(curr.valor_total), 0);
+    const valorAprovados = orcAprovados.reduce((acc, curr) => acc + Number(curr.valor_total), 0);
+    const valor = valorAbertos + valorAprovados; // mantém para compatibilidade
 
     // 📊 CONTADORES POR STATUS
+    const totalAbertos = orcAbertos.length;
     const totalRascunhos = orcamentosFiltrados.filter(o => o.status === "Rascunho").length;
-    const totalAprovados = orcamentosFiltrados.filter(o => o.status === "Aprovado").length;
+    const totalAprovados = orcAprovados.length;
     const totalReprovados = orcamentosFiltrados.filter(o => o.status === "Recusado").length;
 
     setResumo(prev => ({
       ...prev,
       valorTotal: valor,
-      totalOrcamentos: orcAtivos.length,
+      valorAbertos,        // ← NOVO
+      valorAprovados,      // ← NOVO
+      totalAbertos,        // ← NOVO
+      totalOrcamentos: totalAbertos + totalAprovados,
       totalRascunhos,
       totalAprovados,
       totalReprovados
@@ -171,74 +186,79 @@ export default function DashboardPage() {
     return new Intl.DateTimeFormat('pt-BR').format(data);
   };
 
-  const exportarCSVDashboard = async () => {
+  const exportarCSVAgrupado = async () => {
     try {
-      // Busca TODOS os orçamentos com filtros aplicados (igual ao dashboard)
-      const { data: orcamentosCompletos, error } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      let query = supabase
         .from("orcamentos")
         .select(`
-          id,
-          numero_orcamento,
-          data_emissao,
-          valor_total,
-          status,
-          endereco_obra,
-          vendedor_id,
-          user_id,
+          numero_orcamento, data_emissao, valor_total, status,
+          endereco_obra, user_id,
           clientes ( nome_razao_social ),
           vendedores ( nome )
         `)
+        .order("status")
         .order("numero_orcamento", { ascending: false });
+
+      const funcao = ""; // TODO: get from perfil if needed
+      // Vendedor: apenas os seus
+      // Admin e financeiro: todos
+
+      const { data: orcamentos, error } = await query;
 
       if (error) throw error;
 
-      const orcamentosList = (orcamentosCompletos || []) as unknown as UltimoOrcamento[];
+      // Agrupar por status
+      const grupos: Record<string, typeof orcamentos> = {
+        Aprovado: [],
+        Aberto: [],
+        Recusado: [],
+        Rascunho: [],
+      };
 
-      // Filtra igual ao dashboard (por período selecionado)
-      const orcamentosFiltrados = orcamentosList.filter(orc => {
-        if (tipoFiltro === "todos") return true;
-        const dataBase = (orc.data_emissao || "").split("T")[0];
-        if (tipoFiltro === "mes" && mesSelecionado) return dataBase.startsWith(mesSelecionado);
-        if (tipoFiltro === "dia" && diaSelecionado) return dataBase === diaSelecionado;
-        return true;
+      (orcamentos || []).forEach(orc => {
+        const status = orc.status || "Rascunho";
+        if (!grupos[status]) grupos[status] = [];
+        grupos[status].push(orc);
       });
 
-      // Busca emails dos criadores
-      const userIds = orcamentosFiltrados.map(o => o.user_id);
-      const { data: perfis } = await supabase
-        .from("perfis_usuarios")
-        .select("user_id, email")
-        .in("user_id", userIds);
+      // Monta CSV com separação por status
+      const bom = "\ufeff";
+      const linhaVazia = "\n";
+      let csv = bom;
 
-      const emailPorUserId: Record<string, string> = {};
-      perfis?.forEach(p => { emailPorUserId[p.user_id] = p.email; });
+      for (const [status, lista] of Object.entries(grupos)) {
+        if (!lista || lista.length === 0) continue;
 
-      // Monta CSV
-      const cabecalho = "Nº Orçamento;Data Emissão;Cliente;Valor Total;Status;Endereço Obra;Vendedor;Email Criador\n";
-      const linhas = orcamentosFiltrados.map(orc => {
-        const nomeCliente = Array.isArray(orc.clientes)
-          ? orc.clientes[0]?.nome_razao_social
-          : (orc.clientes as { nome_razao_social: string })?.nome_razao_social;
-        const nomeVendedor = Array.isArray(orc.vendedores)
-          ? orc.vendedores[0]?.nome
-          : (orc.vendedores as { nome: string })?.nome || "";
-        const email = emailPorUserId[orc.user_id] || "";
-        const data = orc.data_emissao ? formatarData(orc.data_emissao) : "";
-        const valor = formatarMoeda(Number(orc.valor_total)).replace("R$ ", "").replace(".", ",");
+        csv += `## ${status.toUpperCase()} (${lista.length} orçamento(s));;;;;;;\n`;
+        csv += "Nº Orçamento;Data Emissão;Cliente;Valor Total;Status;Endereço Obra;Vendedor\n";
 
-        return `${orc.numero_orcamento};${data};${nomeCliente};${valor};${orc.status};${orc.endereco_obra || ""};${nomeVendedor};${email}`;
-      }).join("\n");
+        lista.forEach(orc => {
+          const nomeCliente = Array.isArray(orc.clientes)
+            ? orc.clientes[0]?.nome_razao_social
+            : (orc.clientes as { nome_razao_social: string })?.nome_razao_social || "";
+          const nomeVendedor = Array.isArray(orc.vendedores)
+            ? orc.vendedores[0]?.nome
+            : (orc.vendedores as { nome: string })?.nome || "";
+          const data = orc.data_emissao ? formatarData(orc.data_emissao) : "";
+          const valor = Number(orc.valor_total).toFixed(2).replace(".", ",");
+          csv += `${orc.numero_orcamento};${data};${nomeCliente};${valor};${orc.status};${orc.endereco_obra || ""};${nomeVendedor}\n`;
+        });
 
-      const csv = cabecalho + linhas;
-      const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+        csv += linhaVazia;
+      }
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `dashboard_orcamentos_${new Date().toISOString().slice(0,10)}.csv`;
+      link.download = `relatorio_orcamentos_${new Date().toISOString().slice(0, 10)}.csv`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert("Erro ao exportar CSV: " + (err as Error).message);
+      alert("Erro ao exportar: " + (err as Error).message);
     }
   };
 
@@ -260,6 +280,17 @@ export default function DashboardPage() {
 
       const lista = (orcs || []) as unknown as UltimoOrcamento[];
 
+      // Busca o nome do vendedor para exibição
+      const { data: meuVendedor } = await supabase
+        .from("vendedores")
+        .select("nome")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (meuVendedor?.nome) {
+        setNomeExibicao(meuVendedor.nome);
+      }
+
       // 2. Separa por status
       const abertos = lista.filter(o => o.status === "Aberto");
       const aprovados = lista.filter(o => o.status === "Aprovado");
@@ -269,6 +300,7 @@ export default function DashboardPage() {
       setResumoVendedor({
         valorAberto: abertos.reduce((s, o) => s + Number(o.valor_total), 0),
         valorAprovado: aprovados.reduce((s, o) => s + Number(o.valor_total), 0),
+        valorRecusado: recusados.reduce((s, o) => s + Number(o.valor_total), 0),
         qtdAberto: abertos.length,
         qtdAprovado: aprovados.length,
         qtdRascunho: rascunhos.length,
@@ -280,6 +312,10 @@ export default function DashboardPage() {
 
       // 4. Orçamentos aprovados — últimos 5
       setOrcamentosAprovados(aprovados.slice(0, 5));
+
+      // 4b. Orçamentos recusados e rascunhos
+      setOrcamentosRecusados(recusados.slice(0, 5));
+      setOrcamentosRascunhos(rascunhos.slice(0, 5));
 
       // 5. Busca OPs vinculadas aos orçamentos aprovados deste vendedor
       const idsAprovados = aprovados.map(o => o.id);
@@ -340,7 +376,7 @@ export default function DashboardPage() {
         .select(`id, numero_orcamento, data_emissao, created_at, valor_total, status, clientes ( nome_razao_social ), vendedores ( nome, email )`)
         .order("numero_orcamento", { ascending: false });
 
-      if (!isAdmin) {
+      if (!isAdmin && !isFinanceiro) {
         orcamentosQuery = orcamentosQuery.eq("user_id", user.id);
       }
 
@@ -374,7 +410,7 @@ export default function DashboardPage() {
   // =========================================================================
   // 👔 VISÃO DO VENDEDOR (Simplificada)
   // =========================================================================
-  if (!isAdmin) {
+  if (!isAdmin && !isFinanceiro) {
     const maxGrafico = Math.max(...graficoVendedor.map(m => m.aprovados + m.abertos), 1);
 
     // Labels de status de OP em português
@@ -422,6 +458,11 @@ export default function DashboardPage() {
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-red-100">
             <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">Recusados</p>
             <h3 className="text-2xl font-black text-red-400">{resumoVendedor.qtdRecusado}</h3>
+            {resumoVendedor.valorRecusado > 0 && (
+              <p className="text-xs text-red-300 mt-1 font-medium">
+                {formatarMoeda(resumoVendedor.valorRecusado)}
+              </p>
+            )}
           </div>
         </div>
 
@@ -480,8 +521,31 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Orçamentos aguardando aprovação */}
-        {orcamentosAguardando.length > 0 && (
+        {/* Abas de status do vendedor */}
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-4">
+          {[
+            { key: "abertos", label: "Abertos", count: resumoVendedor.qtdAberto, cor: "text-blue-600" },
+            { key: "aprovados", label: "Aprovados", count: resumoVendedor.qtdAprovado, cor: "text-green-600" },
+            { key: "recusados", label: "Recusados", count: resumoVendedor.qtdRecusado, cor: "text-red-500" },
+            { key: "rascunhos", label: "Rascunhos", count: resumoVendedor.qtdRascunho, cor: "text-yellow-600" },
+          ].map(aba => (
+            <button
+              key={aba.key}
+              onClick={() => setAbaVendedor(aba.key as typeof abaVendedor)}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+                abaVendedor === aba.key
+                  ? "bg-white shadow-sm text-gray-900"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {aba.label}
+              <span className={`ml-1.5 font-black ${aba.cor}`}>{aba.count}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Lista filtrada pela aba ativa */}
+        {abaVendedor === "abertos" && orcamentosAguardando.length > 0 && (
           <div className="bg-orange-50/50 border-2 border-orange-200 rounded-2xl overflow-hidden">
             <div className="p-5 border-b border-orange-100 flex justify-between items-center bg-white/50">
               <div className="flex items-center gap-3">
@@ -519,6 +583,139 @@ export default function DashboardPage() {
               })}
             </div>
           </div>
+        )}
+
+        {abaVendedor === "aprovados" && orcamentosAprovados.length > 0 && (
+          <div className="bg-green-50/50 border-2 border-green-200 rounded-2xl overflow-hidden">
+            <div className="p-5 border-b border-green-100 flex justify-between items-center bg-white/50">
+              <div className="flex items-center gap-3">
+                <div className="bg-green-100 text-green-600 p-2 rounded-xl">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">Aprovados</h2>
+                  <p className="text-xs text-gray-500">{orcamentosAprovados.length} orçamento(s) aprovado(s)</p>
+                </div>
+              </div>
+              <Link href="/dashboard/historico" className="text-xs font-bold text-green-600 hover:underline">
+                Ver todos →
+              </Link>
+            </div>
+            <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+              {orcamentosAprovados.map(orc => {
+                const clienteNome = Array.isArray(orc.clientes)
+                  ? orc.clientes[0]?.nome_razao_social
+                  : orc.clientes?.nome_razao_social;
+                return (
+                  <div key={orc.id} className="bg-white rounded-xl p-4 border border-green-100 shadow-sm">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-xs font-bold text-gray-400">#{String(orc.numero_orcamento).padStart(5, "0")}</p>
+                        <p className="font-bold text-gray-800 text-sm mt-0.5 truncate max-w-[160px]">{clienteNome || "—"}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{orc.data_emissao ? formatarData(orc.data_emissao) : ""}</p>
+                      </div>
+                      <p className="font-black text-green-600 text-sm">{formatarMoeda(Number(orc.valor_total))}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {abaVendedor === "recusados" && orcamentosRecusados.length > 0 && (
+          <div className="bg-red-50/50 border-2 border-red-200 rounded-2xl overflow-hidden">
+            <div className="p-5 border-b border-red-100 flex justify-between items-center bg-white/50">
+              <div className="flex items-center gap-3">
+                <div className="bg-red-100 text-red-600 p-2 rounded-xl">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">Recusados</h2>
+                  <p className="text-xs text-gray-500">{orcamentosRecusados.length} orçamento(s) recusado(s)</p>
+                </div>
+              </div>
+              <Link href="/dashboard/historico" className="text-xs font-bold text-red-600 hover:underline">
+                Ver todos →
+              </Link>
+            </div>
+            <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+              {orcamentosRecusados.map(orc => {
+                const clienteNome = Array.isArray(orc.clientes)
+                  ? orc.clientes[0]?.nome_razao_social
+                  : orc.clientes?.nome_razao_social;
+                return (
+                  <div key={orc.id} className="bg-white rounded-xl p-4 border border-red-100 shadow-sm">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-xs font-bold text-gray-400">#{String(orc.numero_orcamento).padStart(5, "0")}</p>
+                        <p className="font-bold text-gray-800 text-sm mt-0.5 truncate max-w-[160px]">{clienteNome || "—"}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{orc.data_emissao ? formatarData(orc.data_emissao) : ""}</p>
+                      </div>
+                      <p className="font-black text-red-500 text-sm">{formatarMoeda(Number(orc.valor_total))}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {abaVendedor === "rascunhos" && orcamentosRascunhos.length > 0 && (
+          <div className="bg-yellow-50/50 border-2 border-yellow-200 rounded-2xl overflow-hidden">
+            <div className="p-5 border-b border-yellow-100 flex justify-between items-center bg-white/50">
+              <div className="flex items-center gap-3">
+                <div className="bg-yellow-100 text-yellow-600 p-2 rounded-xl">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">Rascunhos</h2>
+                  <p className="text-xs text-gray-500">{orcamentosRascunhos.length} orçamento(s) em rascunho</p>
+                </div>
+              </div>
+              <Link href="/dashboard/historico" className="text-xs font-bold text-yellow-600 hover:underline">
+                Ver todos →
+              </Link>
+            </div>
+            <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+              {orcamentosRascunhos.map(orc => {
+                const clienteNome = Array.isArray(orc.clientes)
+                  ? orc.clientes[0]?.nome_razao_social
+                  : orc.clientes?.nome_razao_social;
+                return (
+                  <div key={orc.id} className="bg-white rounded-xl p-4 border border-yellow-100 shadow-sm">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-xs font-bold text-gray-400">#{String(orc.numero_orcamento).padStart(5, "0")}</p>
+                        <p className="font-bold text-gray-800 text-sm mt-0.5 truncate max-w-[160px]">{clienteNome || "—"}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{orc.data_emissao ? formatarData(orc.data_emissao) : ""}</p>
+                      </div>
+                      <p className="font-black text-yellow-600 text-sm">{formatarMoeda(Number(orc.valor_total))}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {abaVendedor === "abertos" && orcamentosAguardando.length === 0 && (
+          <div className="text-center py-8 text-gray-400 text-sm">Nenhum orçamento aberto</div>
+        )}
+        {abaVendedor === "aprovados" && orcamentosAprovados.length === 0 && (
+          <div className="text-center py-8 text-gray-400 text-sm">Nenhum orçamento aprovado</div>
+        )}
+        {abaVendedor === "recusados" && orcamentosRecusados.length === 0 && (
+          <div className="text-center py-8 text-gray-400 text-sm">Nenhum orçamento recusado</div>
+        )}
+        {abaVendedor === "rascunhos" && orcamentosRascunhos.length === 0 && (
+          <div className="text-center py-8 text-gray-400 text-sm">Nenhum orçamento em rascunho</div>
         )}
 
         {/* OPs em andamento geradas a partir dos meus orçamentos */}
@@ -610,7 +807,7 @@ export default function DashboardPage() {
           <p className="text-gray-500 mt-1">Acompanhe o desempenho de todos os vendedores.</p>
         </div>
         <button
-          onClick={exportarCSVDashboard}
+          onClick={exportarCSVAgrupado}
           disabled={loading || ultimosOrcamentos.length === 0}
           className="px-4 py-2 bg-green-600 text-white rounded-lg font-bold text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-wait flex items-center gap-2 transition-colors"
         >
@@ -658,22 +855,41 @@ export default function DashboardPage() {
       </div>
 
       {/* BLOCO 1: CARDS DE RESUMO (GRID) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mt-4">
-        {/* Card 1: Valor Financeiro */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-5 mt-4">
+
+        {/* Card 1: Em Aberto */}
         <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-6 shadow-md text-white">
           <div className="flex justify-between items-start mb-4">
             <div className="bg-blue-500/30 p-3 rounded-lg">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+              </svg>
             </div>
-            <span className="text-blue-100 text-xs font-bold uppercase tracking-wider bg-blue-900/30 px-2 py-1 rounded-md">Aberto + Aprovado</span>
           </div>
           <div>
-            <p className="text-blue-100 text-sm font-medium mb-1">Valor Ativo</p>
-            <h3 className="text-2xl md:text-3xl font-black">{formatarMoeda(resumo.valorTotal)}</h3>
+            <p className="text-blue-100 text-sm font-medium mb-1">Em Aberto</p>
+            <h3 className="text-2xl md:text-3xl font-black">{formatarMoeda(resumo.valorAbertos)}</h3>
+            <p className="text-blue-200 text-xs mt-1">{resumo.totalAbertos} orçamento(s)</p>
           </div>
         </div>
 
-        {/* Card 2: Rascunhos */}
+        {/* Card 2: Aprovados */}
+        <div className="bg-gradient-to-br from-green-600 to-green-800 rounded-2xl p-6 shadow-md text-white">
+          <div className="flex justify-between items-start mb-4">
+            <div className="bg-green-500/30 p-3 rounded-lg">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+          </div>
+          <div>
+            <p className="text-green-100 text-sm font-medium mb-1">Aprovados</p>
+            <h3 className="text-2xl md:text-3xl font-black">{formatarMoeda(resumo.valorAprovados)}</h3>
+            <p className="text-green-200 text-xs mt-1">{resumo.totalAprovados} orçamento(s)</p>
+          </div>
+        </div>
+
+        {/* Card 3: Rascunhos */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-yellow-100 flex flex-col justify-between">
           <div className="flex justify-between items-start mb-4">
             <div className="bg-yellow-50 border border-yellow-100 p-3 rounded-lg">
@@ -683,19 +899,6 @@ export default function DashboardPage() {
           <div>
             <p className="text-gray-500 text-sm font-medium mb-1">Rascunhos em Aberto</p>
             <h3 className="text-2xl font-black text-yellow-600">{resumo.totalRascunhos}</h3>
-          </div>
-        </div>
-
-        {/* Card 3: Aprovados */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-green-100 flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-4">
-            <div className="bg-green-50 border border-green-100 p-3 rounded-lg">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            </div>
-          </div>
-          <div>
-            <p className="text-gray-500 text-sm font-medium mb-1">Aprovados no Período</p>
-            <h3 className="text-2xl font-black text-green-600">{resumo.totalAprovados}</h3>
           </div>
         </div>
 
@@ -913,9 +1116,11 @@ export default function DashboardPage() {
               <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
             </div>
             <p className="text-gray-500 font-medium mb-4">Nenhum orçamento encontrado neste período.</p>
-            <Link href="/dashboard/orcamentos" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-lg transition-colors shadow-sm">
-              Criar Novo Orçamento
-            </Link>
+            {!isFinanceiro && (
+              <Link href="/dashboard/orcamentos" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-lg transition-colors shadow-sm">
+                Criar Novo Orçamento
+              </Link>
+            )}
           </div>
         ) : (
           <div>
