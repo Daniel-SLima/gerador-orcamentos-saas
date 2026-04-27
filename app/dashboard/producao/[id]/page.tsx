@@ -253,7 +253,7 @@ export default function ProducaoDetalhePage() {
     setSubitens(atualizados);
 
     // Se todos foram concluídos, marca o item pai como concluido
-    if (atualizados.every((s: Subitem) => s.concluido) && atualizados.length === itemOpSelecionado.quantidade) {
+    if (itemOpSelecionado && atualizados.every((s: Subitem) => s.concluido) && atualizados.length === itemOpSelecionado.quantidade) {
       await supabase.from("itens_op").update({ status_item: "concluido" }).eq("id", itemOpSelecionado.id);
       setOp(prev => prev ? {
         ...prev,
