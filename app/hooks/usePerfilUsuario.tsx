@@ -7,6 +7,7 @@ interface PerfilContextType {
   isAdmin: boolean;
   isVendedor: boolean;
   isOperador: boolean;
+  isFinanceiro: boolean;
   isDesativado: boolean;
   setorDoOperador: string | null;
   userId: string | null;
@@ -20,6 +21,7 @@ export function PerfilUsuarioProvider({ children }: { children: React.ReactNode 
   const [isAdmin, setIsAdmin] = useState(false);
   const [isVendedor, setIsVendedor] = useState(true);
   const [isOperador, setIsOperador] = useState(false);
+  const [isFinanceiro, setIsFinanceiro] = useState(false);
   const [isDesativado, setIsDesativado] = useState(false);
   const [setorDoOperador, setSetorDoOperador] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -53,6 +55,7 @@ export function PerfilUsuarioProvider({ children }: { children: React.ReactNode 
           setIsAdmin(funcaoAjustada === "admin");
           setIsVendedor(funcaoAjustada === "vendedor");
           setIsOperador(funcaoAjustada === "operador");
+          setIsFinanceiro(funcaoAjustada === "financeiro");
           setIsDesativado(funcaoAjustada === "desativado");
           setSetorDoOperador(funcaoAjustada === "operador" ? (perfil.setor || null) : null);
         }
@@ -71,6 +74,7 @@ export function PerfilUsuarioProvider({ children }: { children: React.ReactNode 
         setIsAdmin(false);
         setIsVendedor(true);
         setIsOperador(false);
+        setIsFinanceiro(false);
         setIsDesativado(false);
         setSetorDoOperador(null);
         setEmailUsuario(null);
@@ -86,7 +90,7 @@ export function PerfilUsuarioProvider({ children }: { children: React.ReactNode 
 
   return (
     <PerfilContext.Provider value={{
-      isAdmin, isVendedor, isOperador, isDesativado,
+      isAdmin, isVendedor, isOperador, isFinanceiro, isDesativado,
       setorDoOperador, userId, emailUsuario, loadingPerfil
     }}>
       {children}
