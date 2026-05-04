@@ -35,7 +35,7 @@ export default function UsuariosPage() {
 
   // Filtros
   const [busca, setBusca] = useState("");
-  const [filtroFuncao, setFiltroFuncao] = useState<"todos" | "admin" | "vendedor" | "operador" | "financeiro">("todos");
+  const [filtroFuncao, setFiltroFuncao] = useState<"todos" | "admin" | "vendedor" | "operador" | "financeiro" | "compras">("todos");
 
   // Convite Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -211,7 +211,8 @@ export default function UsuariosPage() {
     const vendedores = usuarios.filter(u => u.funcao === "vendedor").length;
     const operadores = usuarios.filter(u => u.funcao === "operador").length;
     const financeiros = usuarios.filter(u => u.funcao === "financeiro").length;
-    return { total, admins, vendedores, operadores, financeiros };
+    const compras = usuarios.filter(u => u.funcao === "compras").length;
+    return { total, admins, vendedores, operadores, financeiros, compras };
   };
 
   const abrirEditModal = (usuario: PerfilUsuario) => {
@@ -247,7 +248,7 @@ export default function UsuariosPage() {
     return matchesBusca && matchesFuncao;
   });
 
-  const { total, admins, vendedores, operadores, financeiros } = getEstatisticas();
+  const { total, admins, vendedores, operadores, financeiros, compras } = getEstatisticas();
 
   if (loadingPerfil || loading) {
     return (
@@ -283,7 +284,7 @@ export default function UsuariosPage() {
       </div>
 
       {/* Cards de Estatísticas */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
           <div className="bg-gray-50 w-12 h-12 rounded-full flex items-center justify-center text-gray-400">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
@@ -314,6 +315,12 @@ export default function UsuariosPage() {
           </div>
           <div><p className="text-sm font-semibold text-gray-500 uppercase">Financeiro</p><p className="text-2xl font-bold text-gray-900">{financeiros}</p></div>
         </div>
+        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4 border-l-[4px] border-l-blue-500">
+          <div className="bg-blue-50 w-12 h-12 rounded-full flex items-center justify-center text-blue-600">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+          </div>
+          <div><p className="text-sm font-semibold text-gray-500 uppercase">Compras</p><p className="text-2xl font-bold text-gray-900">{compras}</p></div>
+        </div>
       </div>
 
       {/* Toolbar */}
@@ -336,6 +343,7 @@ export default function UsuariosPage() {
           <button onClick={() => setFiltroFuncao("vendedor")} className={`px-4 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${filtroFuncao === "vendedor" ? "bg-white text-blue-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Vendedores</button>
           <button onClick={() => setFiltroFuncao("operador")} className={`px-4 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${filtroFuncao === "operador" ? "bg-white text-orange-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Operadores</button>
           <button onClick={() => setFiltroFuncao("financeiro")} className={`px-4 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${filtroFuncao === "financeiro" ? "bg-white text-emerald-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Financeiro</button>
+          <button onClick={() => setFiltroFuncao("compras")} className={`px-4 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${filtroFuncao === "compras" ? "bg-white text-blue-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>Compras</button>
         </div>
       </div>
 
@@ -379,9 +387,10 @@ export default function UsuariosPage() {
                         usuario.funcao === "desativado" ? "bg-gray-100 text-gray-500 border-gray-300" :
                         usuario.funcao === "operador" ? "bg-orange-50 text-orange-700 border-orange-200" :
                         usuario.funcao === "financeiro" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                        usuario.funcao === "compras" ? "bg-blue-50 text-blue-700 border-blue-200" :
                         "bg-blue-50 text-blue-700 border-blue-200"
                       }`}>
-                        {isAdminRole ? "🛡️ Admin" : usuario.funcao === "desativado" ? "🚫 Desativado" : usuario.funcao === "operador" ? "🏭 Operador" : usuario.funcao === "financeiro" ? "💰 Financeiro" : "💼 Vendedor"}
+                        {isAdminRole ? "🛡️ Admin" : usuario.funcao === "desativado" ? "🚫 Desativado" : usuario.funcao === "operador" ? "🏭 Operador" : usuario.funcao === "financeiro" ? "💰 Financeiro" : usuario.funcao === "compras" ? "🛒 Compras" : "💼 Vendedor"}
                       </span>
                       {usuario.funcao === "operador" && usuario.setor && (
                         <span className="text-xs text-orange-600 font-medium capitalize">{usuario.setor}</span>
@@ -583,7 +592,7 @@ export default function UsuariosPage() {
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Função</label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {["admin", "vendedor", "operador", "financeiro"].map(f => (
+                  {["admin", "vendedor", "operador", "financeiro", "compras"].map(f => (
                     <button
                       key={f}
                       type="button"
@@ -597,7 +606,7 @@ export default function UsuariosPage() {
                           : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
                       }`}
                     >
-                      {f === "admin" ? "🛡️" : f === "operador" ? "🏭" : f === "financeiro" ? "💰" : "💼"} {f}
+                      {f === "admin" ? "🛡️" : f === "operador" ? "🏭" : f === "financeiro" ? "💰" : f === "compras" ? "🛒" : "💼"} {f}
                     </button>
                   ))}
                 </div>

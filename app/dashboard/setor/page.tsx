@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { usePerfilUsuario } from "../../hooks/usePerfilUsuario";
 import { useAlert, AlertModal } from "../../components/AlertModal";
+import { STATUS_ITEM_OP, getCorStatus } from "../../lib/statusProducao";
 
 interface ItemOP {
   id: string;
@@ -40,6 +41,7 @@ interface SubitemOP {
   concluido: boolean;
   concluido_por: string | null;
   concluido_em: string | null;
+  status?: string;
 }
 
 const SETORES = ["metalurgia", "impressao", "plotagem", "instalacao", "embalagem"];
@@ -61,6 +63,7 @@ export default function SetorPage() {
   const [ops, setOps] = useState<OPResumida[]>([]);
   const [opSelecionada, setOpSelecionada] = useState<OPResumida | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
+  const [itemSelecionadoParaStatus, setItemSelecionadoParaStatus] = useState<ItemOP | null>(null);
   const [itensDaOp, setItensDaOp] = useState<ItemOP[]>([]);
   const [loading, setLoading] = useState(true);
   const [processando, setProcessando] = useState<string | null>(null);
@@ -201,14 +204,10 @@ export default function SetorPage() {
             orcamentos ( clientes ( nome_razao_social ) )
           )
         `)
-        .eq("op_id", op.op_id)
-        .in("status_item", ["pendente", "em_andamento"]);
-
-      if (setorAtual === "metalurgia") {
-        query = query.or(`setor_atual.eq.metalurgia,setor_atual.eq.aguardando`);
-      } else {
-        query = query.eq("setor_atual", setorAtual);
-      }
+        .eq("op_id", op.op_id);
+      
+      // Remover filtro in("status_item") e filtros de setor
+      // Todos os itens da OP devem aparecer
 
       const { data, error } = await query.order("created_at", { ascending: true });
       if (error) throw error;
@@ -261,6 +260,62 @@ export default function SetorPage() {
       ),
     }));
     setTogglingSubitem(null);
+  };
+
+  const atualizarStatusSubitem = async (subitemId: string, novoStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from("subitens_op")
+        .update({ status: novoStatus })
+        .eq("id", subitemId);
+      
+      if (error) throw error;
+
+      setSubitensMap(prev => {
+        const next = { ...prev };
+        for (const [key, subitens] of Object.entries(next)) {
+          next[key] = subitens.map(s => s.id === subitemId ? { ...s, status: novoStatus } : s);
+        }
+        return next;
+      });
+      showAlert("Status do subitem atualizado!", { type: "success", title: "OK" });
+    } catch (error) {
+      showAlert("Erro ao atualizar status: " + (error as Error).message, { type: "error", title: "Erro" });
+    }
+  };
+
+  const atualizarStatusItem = async (itemId: string, novoStatus: string) => {
+    const itemAtual = itensDaOp.find(i => i.id === itemId);
+    if (!itemAtual) return;
+
+    if (novoStatus === "finalizado_entregue" || novoStatus === "concluido") {
+      setItemSelecionadoParaStatus(null);
+      await finalizarItem(itemAtual);
+      return;
+    }
+
+    if (!userId || !setorAtual) return;
+    setProcessando(itemId);
+
+    try {
+      const { error: errUpd } = await supabase.from("itens_op").update({ status_item: novoStatus }).eq("id", itemId);
+      if (errUpd) throw errUpd;
+
+      await supabase.from("registros_checklist").insert({
+        item_op_id: itemId,
+        setor: itemAtual.setor_atual,
+        acao: novoStatus,
+        usuario_id: userId,
+      });
+
+      setItensDaOp(prev => prev.map(i => i.id === itemId ? { ...i, status_item: novoStatus } : i));
+      setItemSelecionadoParaStatus(null);
+      showAlert(`Status atualizado com sucesso`, { type: "success", title: "OK" });
+    } catch (err) {
+      showAlert("Erro ao atualizar status: " + (err as Error).message, { type: "error", title: "Erro" });
+    } finally {
+      setProcessando(null);
+    }
   };
 
   const receberItem = async (item: ItemOP) => {
@@ -638,8 +693,17 @@ export default function SetorPage() {
               return (
                 <div
                   key={item.id}
-                  className="bg-gray-800 border border-gray-700 rounded-2xl overflow-hidden flex flex-col"
+                  className="bg-gray-800 border border-gray-700 rounded-2xl overflow-hidden flex flex-col relative"
                 >
+                  <div className="absolute top-2 left-2 z-10">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium shadow-sm ${
+                      item.setor_atual === setorAtual 
+                        ? "bg-blue-100 text-blue-700" 
+                        : "bg-gray-100 text-gray-700"
+                    }`}>
+                      {SETORES_LABELS[item.setor_atual] || item.setor_atual || "aguardando"}
+                    </span>
+                  </div>
                   {/* Imagem do produto — ocupa área generosa no topo do card */}
                   {item.imagem_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -700,52 +764,80 @@ export default function SetorPage() {
 
                         {/* Lista de subitens (expandível) */}
                         {expandedSubitens[item.id] && (
-                          <div className="space-y-1 mt-1">
-                            {subitensMap[item.id].map(subitem => (
-                              <label
-                                key={subitem.id}
-                                className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
-                                  subitem.concluido ? "bg-green-900/30" : "bg-gray-700/50 hover:bg-gray-700"
-                                }`}
-                                onClick={e => e.stopPropagation()}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={subitem.concluido}
-                                  disabled={togglingSubitem === subitem.id}
-                                  onChange={() => toggleSubitemSetor(subitem)}
-                                  className="w-4 h-4 accent-green-500 shrink-0"
-                                />
-                                <span className={`text-xs leading-tight ${subitem.concluido ? "line-through text-gray-500" : "text-gray-200"}`}>
-                                  {subitem.nome}
-                                </span>
-                              </label>
-                            ))}
+                          <div className="space-y-2 mt-2">
+                            {subitensMap[item.id].map(subitem => {
+                              const podeInteragir = isAdmin || item.setor_atual === setorAtual;
+                              return (
+                                <div
+                                  key={subitem.id}
+                                  className={`flex items-center justify-between p-2 rounded-lg transition-colors border ${
+                                    subitem.concluido ? "bg-green-900/20 border-green-900/50" : "bg-gray-700/30 border-gray-600"
+                                  }`}
+                                  onClick={e => e.stopPropagation()}
+                                >
+                                  <label className="flex items-center gap-2 cursor-pointer flex-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={subitem.concluido}
+                                      disabled={togglingSubitem === subitem.id || !podeInteragir}
+                                      onChange={() => toggleSubitemSetor(subitem)}
+                                      className="w-4 h-4 accent-green-500 shrink-0"
+                                    />
+                                    <span className={`text-xs leading-tight ${subitem.concluido ? "line-through text-gray-500" : "text-gray-200"}`}>
+                                      {subitem.nome}
+                                    </span>
+                                  </label>
+                                  
+                                  <select
+                                    value={subitem.status || "pendente"}
+                                    onChange={e => atualizarStatusSubitem(subitem.id, e.target.value)}
+                                    disabled={!podeInteragir}
+                                    className={`text-[10px] md:text-xs border border-gray-600 rounded px-1 py-1 outline-none font-medium ml-2 ${
+                                      !podeInteragir ? "opacity-50 cursor-not-allowed" : ""
+                                    } ${
+                                      getCorStatus(subitem.status || "pendente").split(" ")[0].replace("100", "800")
+                                    } text-white`}
+                                  >
+                                    {STATUS_ITEM_OP.map(s => (
+                                      <option key={s.value} value={s.value} className="bg-gray-800">{s.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
                     )}
 
-                    {/* Botão único: Recebi (pendente) ou Finalizei e Entreguei (em_andamento) */}
-                    {pendente ? (
-                      <button
-                        onClick={() => receberItem(item)}
-                        disabled={processando === item.id}
-                        className="mt-auto w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-xl font-black text-white text-sm transition-colors flex flex-col items-center gap-0.5"
-                      >
-                        <span className="text-xl">📥</span>
-                        {processando === item.id ? "..." : "Recebi"}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => finalizarItem(item)}
-                        disabled={processando === item.id}
-                        className="mt-auto w-full py-3 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-xl font-black text-white text-sm transition-colors flex flex-col items-center gap-0.5"
-                      >
-                        <span className="text-xl">🚀</span>
-                        {processando === item.id ? "..." : "Enviado"}
-                      </button>
-                    )}
+                    {/* Botões de Interação travados por setor */}
+                    {(() => {
+                      const podeInteragir = isAdmin || item.setor_atual === setorAtual;
+                      const opacityClass = !podeInteragir ? "opacity-40 cursor-not-allowed" : "";
+
+                      if (item.status_item === "concluido") {
+                        return (
+                          <div className="mt-auto w-full py-3 bg-emerald-900/40 border border-emerald-800/50 rounded-xl flex flex-col items-center gap-0.5">
+                            <span className="text-xl">✅</span>
+                            <span className="text-emerald-500 font-bold text-sm">Concluído</span>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className={`mt-auto ${opacityClass}`}>
+                          <button
+                            disabled={!podeInteragir || processando === item.id}
+                            onClick={() => podeInteragir ? setItemSelecionadoParaStatus(item) : null}
+                            className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-xl font-black text-white text-sm transition-colors flex flex-col items-center gap-0.5"
+                          >
+                            <span className="text-xl">🛠️</span>
+                            {processando === item.id ? "..." : (podeInteragir ? "Alterar Status" : "Outro Setor")}
+                          </button>
+                        </div>
+                      );
+                    })()}
+
                   </div>
                 </div>
               );
@@ -753,6 +845,48 @@ export default function SetorPage() {
           </div>
         )}
       </div>
+
+      {/* ===================== MODAL DE STATUS ===================== */}
+      {itemSelecionadoParaStatus && (
+        <div
+          className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+          onClick={() => setItemSelecionadoParaStatus(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-800">Alterar Status</h2>
+              <button
+                onClick={() => setItemSelecionadoParaStatus(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="p-4 grid grid-cols-1 gap-2">
+              {STATUS_ITEM_OP.map(s => (
+                <button
+                  key={s.value}
+                  onClick={() => atualizarStatusItem(itemSelecionadoParaStatus.id, s.value)}
+                  className={`w-full px-4 py-3 rounded-lg text-sm font-medium text-left transition-colors flex justify-between items-center ${
+                    itemSelecionadoParaStatus.status_item === s.value
+                      ? "ring-2 ring-blue-500 " + getCorStatus(s.value)
+                      : "bg-gray-50 hover:bg-gray-100 text-gray-700"
+                  }`}
+                >
+                  {s.label}
+                  {itemSelecionadoParaStatus.status_item === s.value && <span>✓</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <AlertModal {...alertProps} />
     </div>

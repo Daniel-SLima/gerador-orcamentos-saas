@@ -28,7 +28,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   
   // 🚀 O ganho de performance mágico acontece aqui: isso agora puxa da memória (Cache) instantaneamente!
-  const { isAdmin, isOperador, isFinanceiro, isDesativado, loadingPerfil } = usePerfilUsuario();
+  const { isAdmin, isOperador, isFinanceiro, isCompras, isDesativado, loadingPerfil } = usePerfilUsuario();
 
   // =========================================================================
   // 🧹 FAXINA INTELIGENTE DE ANEXOS TEMPORÁRIOS
@@ -108,6 +108,15 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     }
   }, [isFinanceiro, pathname, loadingPerfil, isCheckingAuth, router]);
 
+  // Proteção de Rota para Compras
+  useEffect(() => {
+    if (!loadingPerfil && !isCheckingAuth && isCompras) {
+      const rotasPermitidas = ["/dashboard/compras", "/dashboard/mudar-senha", "/dashboard"];
+      const acessoPermitido = rotasPermitidas.some(rota => pathname.startsWith(rota));
+      if (!acessoPermitido) router.replace("/dashboard/compras");
+    }
+  }, [isCompras, pathname, loadingPerfil, isCheckingAuth, router]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.replace("/");
@@ -128,6 +137,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     { href: "/dashboard/orcamentos", label: "Orçamentos", icon: "📄" },
     { href: "/dashboard/historico", label: "Histórico", icon: "🕒" },
     ...(isAdmin ? [{ href: "/dashboard/producao", label: "Produção", icon: "🏭" }] : []),
+    ...(isAdmin ? [{ href: "/dashboard/compras", label: "Compras", icon: "🛒" }] : []),
     ...(isAdmin ? [{ href: "/dashboard/usuarios", label: "Equipe", icon: "🛡️" }] : []),
     { href: "/dashboard/mudar-senha", label: "Segurança", icon: "🔒" },
   ];
@@ -139,7 +149,17 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     { href: "/dashboard/mudar-senha", label: "Segurança", icon: "🔒" },
   ];
 
-  const menuItems = isOperador ? menuItemsOperador : isFinanceiro ? menuItemsFinanceiro : menuItemsAdminVendedor;
+  // Menu para Compras
+  const menuItemsCompras = [
+    { href: "/dashboard", label: "Início", icon: "🏠" },
+    { href: "/dashboard/compras", label: "Compras", icon: "🛒" },
+    { href: "/dashboard/mudar-senha", label: "Segurança", icon: "🔒" },
+  ];
+
+  const menuItems = isOperador ? menuItemsOperador 
+    : isFinanceiro ? menuItemsFinanceiro 
+    : isCompras ? menuItemsCompras
+    : menuItemsAdminVendedor;
 
   // Tela de transição integrada (espera tanto sessão local quanto perfil da nuvem estar pronto)
   if (isCheckingAuth || loadingPerfil) {

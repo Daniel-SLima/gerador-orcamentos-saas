@@ -7,6 +7,7 @@ import { pdf } from "@react-pdf/renderer";
 import { DadosImpressao, Cliente, Empresa, ItemOrcamento, Orcamento, Anexo } from "./types";
 import { OrcamentoPDF } from "./OrcamentoPDF";
 import { OrdemProducaoPDF } from "./OrdemProducaoPDF";
+import { OrdemProducaoFinanceiroPDF } from "./OrdemProducaoFinanceiroPDF";
 
 export default function ImprimirOrcamento() {
   const params = useParams();
@@ -93,9 +94,14 @@ export default function ImprimirOrcamento() {
 
         // Escolhe o componente correto de acordo com o tipo de documento
         const isOP = action === "op";
-        const documento = isOP
-          ? <OrdemProducaoPDF dados={dadosCompletos} />
-          : <OrcamentoPDF dados={dadosCompletos} />;
+        let documento;
+        if (isOP) {
+          documento = isFinanceiro 
+            ? <OrdemProducaoFinanceiroPDF dados={dadosCompletos} />
+            : <OrdemProducaoPDF dados={dadosCompletos} />;
+        } else {
+          documento = <OrcamentoPDF dados={dadosCompletos} />;
+        }
 
         const blob = await pdf(documento).toBlob();
         const urlCriada = URL.createObjectURL(blob);

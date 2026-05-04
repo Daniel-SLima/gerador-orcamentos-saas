@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
 import { usePerfilUsuario } from "../../../hooks/usePerfilUsuario";
 import { useAlert, useConfirm, AlertModal, ConfirmModal } from "../../../components/AlertModal";
+import { STATUS_ITEM_OP, getCorStatus } from "../../../lib/statusProducao";
 
 interface RegistroChecklist {
   id: string;
@@ -12,6 +13,24 @@ interface RegistroChecklist {
   acao: string;
   created_at: string;
   usuario_id: string;
+}
+
+interface MaterialOP {
+  id: string;
+  op_id: string;
+  item_op_id: string | null;
+  descricao: string;
+  quantidade_necessaria: number;
+  unidade: string | null;
+  tem_no_galpao: boolean;
+  quantidade_galpao: number;
+  precisa_comprar: boolean;
+  quantidade_comprar: number;
+  status: "solicitado" | "comprado" | "entregue" | "cancelado";
+  previsao_entrega: string | null;
+  destino_entrega: string | null;
+  observacoes: string | null;
+  created_at: string;
 }
 
 interface ItemOP {
@@ -33,6 +52,7 @@ interface Subitem {
   concluido_por: string | null;
   concluido_em: string | null;
   created_at: string;
+  status?: string;
 }
 
 interface OpCompleta {
@@ -91,6 +111,24 @@ export default function ProducaoDetalhePage() {
   const [itemOpSelecionado, setItemOpSelecionado] = useState<ItemOP | null>(null);
   const [subitens, setSubitens] = useState<Subitem[]>([]);
   const [carregandoSubitens, setCarregandoSubitens] = useState(false);
+
+  // 🚀 ESTADOS PARA MATERIAIS
+  const [abaAtiva, setAbaAtiva] = useState<"itens" | "materiais">("itens");
+  const [materiais, setMateriais] = useState<MaterialOP[]>([]);
+  const [loadingMateriais, setLoadingMateriais] = useState(false);
+  const [modalMaterialAberto, setModalMaterialAberto] = useState(false);
+
+  // Estados do formulário de material
+  const [matDescricao, setMatDescricao] = useState("");
+  const [matQuantNecessaria, setMatQuantNecessaria] = useState<number>(1);
+  const [matUnidade, setMatUnidade] = useState("");
+  const [matTemGalpao, setMatTemGalpao] = useState(false);
+  const [matQuantGalpao, setMatQuantGalpao] = useState<number>(0);
+  const [matPrecisaComprar, setMatPrecisaComprar] = useState(true);
+  const [matQuantComprar, setMatQuantComprar] = useState<number>(1);
+  const [matObservacoes, setMatObservacoes] = useState("");
+  const [matItemOpId, setMatItemOpId] = useState<string | null>(null);
+  const [salvandoMaterial, setSalvandoMaterial] = useState(false);
 
   const id = params.id as string;
 
@@ -262,6 +300,72 @@ export default function ProducaoDetalhePage() {
     }
   };
 
+  // 🚀 FUNÇÕES PARA MATERIAIS
+  const carregarMateriais = async () => {
+    if (!id) return;
+    setLoadingMateriais(true);
+    const { data, error } = await supabase
+      .from("materiais_op")
+      .select("*")
+      .eq("op_id", id)
+      .order("created_at", { ascending: false });
+    
+    if (!error && data) setMateriais(data as MaterialOP[]);
+    setLoadingMateriais(false);
+  };
+
+  const salvarMaterial = async () => {
+    if (!matDescricao.trim()) {
+      showAlert("Informe a descrição do material.", { type: "error", title: "Erro" });
+      return;
+    }
+    setSalvandoMaterial(true);
+    
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    const { error } = await supabase.from("materiais_op").insert([{
+      op_id: id,
+      item_op_id: matItemOpId || null,
+      descricao: matDescricao.trim(),
+      quantidade_necessaria: matQuantNecessaria,
+      unidade: matUnidade || null,
+      tem_no_galpao: matTemGalpao,
+      quantidade_galpao: matTemGalpao ? matQuantGalpao : 0,
+      precisa_comprar: matPrecisaComprar,
+      quantidade_comprar: matPrecisaComprar ? matQuantComprar : 0,
+      status: "solicitado",
+      solicitado_por: user?.id || null,
+      observacoes: matObservacoes || null,
+    }]);
+    
+    if (error) {
+      showAlert("Erro ao salvar material: " + error.message, { type: "error", title: "Erro" });
+    } else {
+      showAlert("Material lançado com sucesso!", { type: "success", title: "OK" });
+      setModalMaterialAberto(false);
+      limparFormMaterial();
+      carregarMateriais();
+    }
+    setSalvandoMaterial(false);
+  };
+
+  const limparFormMaterial = () => {
+    setMatDescricao(""); setMatQuantNecessaria(1); setMatUnidade("");
+    setMatTemGalpao(false); setMatQuantGalpao(0);
+    setMatPrecisaComprar(true); setMatQuantComprar(1);
+    setMatObservacoes(""); setMatItemOpId(null);
+  };
+
+  const confirmarRecebimentoMaterial = async (materialId: string) => {
+    const { error } = await supabase
+      .from("materiais_op")
+      .update({ status: "entregue" })
+      .eq("id", materialId);
+    
+    if (error) showAlert("Erro: " + error.message, { type: "error", title: "Erro" });
+    else { showAlert("Material marcado como recebido!", { type: "success", title: "OK" }); carregarMateriais(); }
+  };
+
   if (loading || loadingPerfil) {
     return (
       <div className="p-4 md:p-8 max-w-5xl mx-auto">
@@ -403,13 +507,113 @@ export default function ProducaoDetalhePage() {
         )}
       </div>
 
-      {/* Lista de itens */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Itens da OP ({totalItens})</h2>
-        </div>
+      {/* Abas */}
+      <div className="flex border-b border-gray-200 mb-4">
+        <button
+          onClick={() => setAbaAtiva("itens")}
+          className={`px-4 py-3 text-sm font-medium transition-colors ${
+            abaAtiva === "itens"
+              ? "border-b-2 border-blue-600 text-blue-600"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          📋 Itens da OP
+        </button>
+        <button
+          onClick={() => { setAbaAtiva("materiais"); carregarMateriais(); }}
+          className={`px-4 py-3 text-sm font-medium transition-colors flex items-center gap-2 ${
+            abaAtiva === "materiais"
+              ? "border-b-2 border-blue-600 text-blue-600"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          🧱 Materiais
+          {materiais.filter(m => m.status === "solicitado").length > 0 && (
+            <span className="bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+              {materiais.filter(m => m.status === "solicitado").length}
+            </span>
+          )}
+        </button>
+      </div>
 
-        <div className="divide-y divide-gray-50">
+      {/* Conteúdo das abas */}
+      {abaAtiva === "materiais" && (
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-semibold text-gray-800">Requisição de Materiais</h3>
+            <button
+              onClick={() => setModalMaterialAberto(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              + Lançar Material
+            </button>
+          </div>
+          
+          {loadingMateriais ? (
+            <div className="text-center py-8 text-gray-400">Carregando...</div>
+          ) : materiais.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              Nenhum material lançado para esta OP.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {materiais.map(mat => (
+                <div key={mat.id} className={`p-4 rounded-xl border ${
+                  mat.status === "solicitado" ? "border-amber-200 bg-amber-50" :
+                  mat.status === "comprado" ? "border-blue-200 bg-blue-50" :
+                  mat.status === "entregue" ? "border-green-200 bg-green-50" :
+                  "border-gray-200 bg-gray-50"
+                }`}>
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900">{mat.descricao}</p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Qtd: {mat.quantidade_necessaria} {mat.unidade || "un"}
+                        {mat.tem_no_galpao && ` · No galpão: ${mat.quantidade_galpao}`}
+                        {mat.precisa_comprar && ` · Comprar: ${mat.quantidade_comprar}`}
+                      </p>
+                      {mat.observacoes && (
+                        <p className="text-xs text-gray-500 mt-1">{mat.observacoes}</p>
+                      )}
+                      {mat.previsao_entrega && (
+                        <p className="text-xs text-blue-700 mt-1">📅 Previsão: {new Date(mat.previsao_entrega).toLocaleDateString("pt-BR")}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        mat.status === "solicitado" ? "bg-amber-200 text-amber-800" :
+                        mat.status === "comprado" ? "bg-blue-200 text-blue-800" :
+                        mat.status === "entregue" ? "bg-green-200 text-green-800" :
+                        "bg-gray-200 text-gray-700"
+                      }`}>
+                        {mat.status === "solicitado" ? "Solicitado" :
+                         mat.status === "comprado" ? "Comprado" :
+                         mat.status === "entregue" ? "Entregue" : "Cancelado"}
+                      </span>
+                      {mat.status === "comprado" && (
+                        <button
+                          onClick={() => confirmarRecebimentoMaterial(mat.id)}
+                          className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                        >
+                          ✓ Confirmar Recebimento
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {abaAtiva === "itens" && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Itens da OP ({totalItens})</h2>
+          </div>
+
+          <div className="divide-y divide-gray-50">
           {op.itens_op?.map((item, itemIndex) => {
             const expandido = itemExpandido === item.id;
             // Letra do item: 0 → A, 1 → B, etc.
@@ -496,6 +700,97 @@ export default function ProducaoDetalhePage() {
           })}
         </div>
       </div>
+      )}
+
+      {/* 🚀 MODAL DE LANÇAMENTO DE MATERIAL */}
+      {modalMaterialAberto && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="p-5 border-b border-gray-100 flex justify-between items-center">
+              <h3 className="font-semibold text-gray-900">Lançar Material</h3>
+              <button onClick={() => { setModalMaterialAberto(false); limparFormMaterial(); }}
+                className="text-gray-400 hover:text-red-500 p-1 rounded">✕</button>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* Vincular a item específico (opcional) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Vincular ao item (opcional)</label>
+                <select value={matItemOpId || ""} onChange={e => setMatItemOpId(e.target.value || null)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none bg-white">
+                  <option value="">OP Geral</option>
+                  {op.itens_op.map(item => (
+                    <option key={item.id} value={item.id}>{item.descricao}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descrição do Material *</label>
+                <input value={matDescricao} onChange={e => setMatDescricao(e.target.value)}
+                  placeholder="Ex: Chapa de aço 2mm" required
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantidade</label>
+                  <input type="number" min={0.1} step={0.1} value={matQuantNecessaria}
+                    onChange={e => setMatQuantNecessaria(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Unidade</label>
+                  <input value={matUnidade} onChange={e => setMatUnidade(e.target.value)}
+                    placeholder="un, kg, m²..." 
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none" />
+                </div>
+              </div>
+              
+              {/* Galpão vs Comprar */}
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={matTemGalpao} onChange={e => setMatTemGalpao(e.target.checked)} className="accent-blue-600" />
+                  <span className="text-sm font-medium text-gray-700">Tem no galpão?</span>
+                </label>
+                {matTemGalpao && (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Quantidade no galpão</label>
+                    <input type="number" min={0} step={0.1} value={matQuantGalpao} onChange={e => setMatQuantGalpao(Number(e.target.value))}
+                      className="w-full px-3 py-1.5 border border-gray-200 rounded text-sm outline-none" />
+                  </div>
+                )}
+                <div className="border-t border-gray-200 pt-3"></div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={matPrecisaComprar} onChange={e => setMatPrecisaComprar(e.target.checked)} className="accent-blue-600" />
+                  <span className="text-sm font-medium text-gray-700">Precisa comprar?</span>
+                </label>
+                {matPrecisaComprar && (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Quantidade a comprar</label>
+                    <input type="number" min={0} step={0.1} value={matQuantComprar} onChange={e => setMatQuantComprar(Number(e.target.value))}
+                      className="w-full px-3 py-1.5 border border-gray-200 rounded text-sm outline-none" />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
+                <textarea value={matObservacoes} onChange={e => setMatObservacoes(e.target.value)}
+                  rows={2} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none resize-none"
+                  placeholder="Fornecedor sugerido, urgência..." />
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-100 flex gap-3">
+              <button onClick={() => { setModalMaterialAberto(false); limparFormMaterial(); }}
+                className="flex-1 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                Cancelar
+              </button>
+              <button onClick={salvarMaterial} disabled={salvandoMaterial}
+                className="flex-1 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors">
+                {salvandoMaterial ? "Salvando..." : "Salvar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 🚀 MODAL DE SUBITENS — Somente leitura para Admin */}
       {modalSubitensAberto && itemOpSelecionado && (
@@ -562,9 +857,14 @@ export default function ProducaoDetalhePage() {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <span className={`text-sm ${s.concluido ? "line-through text-gray-400" : "text-gray-800 font-medium"}`}>
-                        {s.nome}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm ${s.concluido ? "line-through text-gray-400" : "text-gray-800 font-medium"}`}>
+                          {s.nome}
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${getCorStatus(s.status || "pendente")}`}>
+                          {STATUS_ITEM_OP.find(st => st.value === (s.status || "pendente"))?.label || "Pendente"}
+                        </span>
+                      </div>
                       {s.concluido && s.concluido_em && (
                         <p className="text-xs text-green-600 mt-0.5">
                           ✅ {new Date(s.concluido_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { deletarDoCloudinary } from "../../lib/uploadCloudinary";
 import { AlertModal, ConfirmModal, useAlert, useConfirm } from "../../components/AlertModal";
+import { useToast } from "../../components/Toast";
 import { useRouter } from "next/navigation";
 import { usePerfilUsuario } from "../../hooks/usePerfilUsuario";
 
@@ -45,6 +46,7 @@ export default function HistoricoOrcamentosPage() {
   const { isAdmin, isVendedor, isFinanceiro, loadingPerfil } = usePerfilUsuario();
   const { showAlert, alertProps } = useAlert();
   const { showConfirm, confirmProps } = useConfirm();
+  const { showToast } = useToast();
 
   const [termoBusca, setTermoBusca] = useState("");
   const [tipoFiltro, setTipoFiltro] = useState("todos"); // 'todos', 'mes', 'dia'
@@ -68,6 +70,16 @@ export default function HistoricoOrcamentosPage() {
   const [temMais, setTemMais] = useState(true);
   const ITENS_POR_PAGINA = 30;
   const [buscandoMais, setBuscandoMais] = useState(false);
+
+  // Estados do painel de exportação
+  const [painelExportAberto, setPainelExportAberto] = useState(false);
+  const [exportDataInicial, setExportDataInicial] = useState("");
+  const [exportDataFinal, setExportDataFinal] = useState("");
+  const [exportStatus, setExportStatus] = useState("todos");
+  const [exportVendedor, setExportVendedor] = useState("todos");
+  const [exportBusca, setExportBusca] = useState(""); // busca por nº OP, nº Orçamento
+  const [exportandoCSV, setExportandoCSV] = useState(false);
+  const [listaVendedores, setListaVendedores] = useState<{id: string, nome: string}[]>([]);
 
   // 🚀 ESTADOS DO MODAL DE GERAR OP
   const [modalOpAberto, setModalOpAberto] = useState(false);
@@ -99,6 +111,13 @@ export default function HistoricoOrcamentosPage() {
     }
   }, [loadingPerfil]);
 
+  useEffect(() => {
+    if ((isAdmin || isFinanceiro) && !loadingPerfil) {
+      supabase.from("vendedores").select("id, nome").order("nome")
+        .then(({ data }) => { if (data) setListaVendedores(data); });
+    }
+  }, [isAdmin, isFinanceiro, loadingPerfil]);
+
   const carregarOrcamentos = async (page = pagina) => {
     if (page === 0) setLoading(true);
     else setBuscandoMais(true);
@@ -112,6 +131,7 @@ export default function HistoricoOrcamentosPage() {
         .select(`
           id,
           user_id,
+          vendedor_id,
           numero_orcamento,
           data_emissao,
           valor_total,
@@ -124,7 +144,23 @@ export default function HistoricoOrcamentosPage() {
         .order("numero_orcamento", { ascending: false });
 
       if (!isAdmin && !isFinanceiro) {
-        query = query.eq("user_id", user.id);
+        // Busca o vendedor_id correspondente ao user_id atual
+        const { data: vendedorData } = await supabase
+          .from("vendedores")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (vendedorData?.id) {
+          // Mostra orçamentos criados pelo usuário OU onde ele é o vendedor vinculado
+          query = query.or(`user_id.eq.${user.id},vendedor_id.eq.${vendedorData.id}`);
+        } else {
+          query = query.eq("user_id", user.id);
+        }
+      }
+
+      if ((isAdmin || isFinanceiro) && filtroVendedor !== "todos") {
+        query = query.eq("vendedor_id", filtroVendedor);
       }
 
       const { data, count, error } = await query.range(page * ITENS_POR_PAGINA, (page + 1) * ITENS_POR_PAGINA - 1);
@@ -624,65 +660,68 @@ export default function HistoricoOrcamentosPage() {
   };
 
   const exportarCSV = async () => {
+    setExportandoCSV(true);
     try {
-      // Busca email do criador junto com os orçamentos
-      const { data: orcamentosCompletos, error } = await supabase
+      let query = supabase
         .from("orcamentos")
         .select(`
-          id,
-          numero_orcamento,
-          data_emissao,
-          valor_total,
-          status,
-          endereco_obra,
-          vendedor_id,
-          user_id,
-          created_at,
+          numero_orcamento, data_emissao, valor_total, status,
           clientes ( nome_razao_social ),
-          vendedores ( nome )
+          vendedores ( nome ),
+          ordens_producao ( numero_op )
         `)
         .order("numero_orcamento", { ascending: false });
 
+      // Filtros
+      if (exportDataInicial) query = query.gte("data_emissao", exportDataInicial);
+      if (exportDataFinal) query = query.lte("data_emissao", exportDataFinal);
+      if (exportStatus !== "todos") {
+        if (exportStatus === "vencidos") {
+          const hoje = new Date().toISOString().slice(0, 10);
+          query = query.lt("data_emissao", hoje).eq("status", "Aberto");
+        } else {
+          query = query.eq("status", exportStatus);
+        }
+      }
+      if (exportVendedor !== "todos") query = query.eq("vendedor_id", exportVendedor);
+      if (exportBusca.trim()) {
+        const num = parseInt(exportBusca.trim());
+        if (!isNaN(num)) query = query.eq("numero_orcamento", num);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
 
-      const orcamentosList = (orcamentosCompletos || []) as Orcamento[];
+      // Montar CSV
+      const header = ["Nº Orçamento", "Data", "Cliente", "Vendedor", "Valor Total", "Status", "Nº OP"];
+      const linhas = (data || []).map((o: any) => {
+        const cliente = Array.isArray(o.clientes) ? o.clientes[0] : o.clientes;
+        const vendedor = Array.isArray(o.vendedores) ? o.vendedores[0] : o.vendedores;
+        const op = Array.isArray(o.ordens_producao) ? o.ordens_producao[0] : o.ordens_producao;
+        return [
+          o.numero_orcamento,
+          o.data_emissao,
+          cliente?.nome_razao_social || "-",
+          vendedor?.nome || "-",
+          `R$ ${Number(o.valor_total).toFixed(2).replace(".", ",")}`,
+          o.status,
+          op?.numero_op || "-",
+        ].join(";");
+      });
 
-      // Busca emails dos criadores
-      const userIds = orcamentosList.map(o => o.user_id);
-      const { data: perfis } = await supabase
-        .from("perfis_usuarios")
-        .select("user_id, email")
-        .in("user_id", userIds);
-
-      const emailPorUserId: Record<string, string> = {};
-      perfis?.forEach(p => { emailPorUserId[p.user_id] = p.email; });
-
-      // Monta CSV
-      const cabecalho = "Nº Orçamento;Data Emissão;Cliente;Valor Total;Status;Endereço Obra;Vendedor;Email Criador;Itens\n";
-      const linhas = orcamentosList.map(orc => {
-        const nomeCliente = Array.isArray(orc.clientes)
-          ? orc.clientes[0]?.nome_razao_social
-          : (orc.clientes as { nome_razao_social: string })?.nome_razao_social;
-        const nomeVendedor = Array.isArray(orc.vendedores)
-          ? orc.vendedores[0]?.nome
-          : (orc.vendedores as { nome: string })?.nome || "";
-        const email = emailPorUserId[orc.user_id] || "";
-        const data = orc.data_emissao ? formatarData(orc.data_emissao) : "";
-        const valor = formatarMoeda(Number(orc.valor_total)).replace("R$ ", "").replace(".", ",");
-
-        return `${orc.numero_orcamento};${data};${nomeCliente};${valor};${orc.status};${orc.endereco_obra || ""};${nomeVendedor};${email};`;
-      }).join("\n");
-
-      const csv = cabecalho + linhas;
-      const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+      const csvContent = "\uFEFF" + [header.join(";"), ...linhas].join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `historico_orcamentos_${new Date().toISOString().slice(0,10)}.csv`;
+      link.download = `relatorio_orcamentos_${new Date().toISOString().slice(0,10)}.csv`;
       link.click();
       URL.revokeObjectURL(url);
+      showToast("Relatório CSV exportado com sucesso!", "success");
     } catch (err) {
-      showAlert("Erro ao exportar CSV: " + (err as Error).message, { type: "error", title: "Erro" });
+      showToast("Erro ao exportar: " + (err as Error).message, "error");
+    } finally {
+      setExportandoCSV(false);
     }
   };
 
@@ -742,7 +781,7 @@ export default function HistoricoOrcamentosPage() {
     }
 
     const bateStatus = filtroStatus === "todos" || orc.status === filtroStatus;
-    const bateVendedor = filtroVendedor === "todos" || nomeVendedor === filtroVendedor;
+    const bateVendedor = filtroVendedor === "todos" || (orc as any).vendedor_id === filtroVendedor;
 
     return bateBusca && bateData && bateStatus && bateVendedor;
   });
@@ -753,14 +792,15 @@ export default function HistoricoOrcamentosPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
         <h1 className="text-2xl font-bold text-gray-900">Histórico de Orçamentos</h1>
         <div className="flex items-center gap-3">
-          {isAdmin && (
+          {(isAdmin || isFinanceiro) && (
             <button
-              onClick={exportarCSV}
-              disabled={loading || orcamentos.length === 0}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg font-bold text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-wait flex items-center gap-2 transition-colors"
+              onClick={() => setPainelExportAberto(!painelExportAberto)}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-              Exportar CSV
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Exportar Relatório
             </button>
           )}
           <p className="text-sm font-semibold text-gray-500 bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm">
@@ -768,6 +808,63 @@ export default function HistoricoOrcamentosPage() {
           </p>
         </div>
       </div>
+
+      {/* Painel de exportação avançada */}
+      {painelExportAberto && (isAdmin || isFinanceiro) && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 md:p-6 mb-6">
+          <h3 className="text-base font-semibold text-gray-800 mb-4">Filtros para Exportação</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Data Inicial</label>
+              <input type="date" value={exportDataInicial} onChange={e => setExportDataInicial(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Data Final</label>
+              <input type="date" value={exportDataFinal} onChange={e => setExportDataFinal(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <select value={exportStatus} onChange={e => setExportStatus(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
+                <option value="todos">Todos</option>
+                <option value="Aberto">Em Aberto</option>
+                <option value="Aprovado">Aprovados</option>
+                <option value="Recusado">Recusados</option>
+                <option value="Rascunho">Rascunho</option>
+                <option value="vencidos">Vencidos (Aberto + data passada)</option>
+              </select>
+            </div>
+            {isAdmin && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Vendedor</label>
+                <select value={exportVendedor} onChange={e => setExportVendedor(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
+                  <option value="todos">Todos</option>
+                  {listaVendedores.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Buscar por Nº</label>
+              <input type="text" value={exportBusca} onChange={e => setExportBusca(e.target.value)}
+                placeholder="Nº do Orçamento ou OP"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+            </div>
+          </div>
+          <div className="mt-4 flex flex-col sm:flex-row gap-3">
+            <button onClick={exportarCSV} disabled={exportandoCSV}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
+              {exportandoCSV ? "Exportando..." : "📥 Baixar CSV"}
+            </button>
+            <button onClick={() => setPainelExportAberto(false)}
+              className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row gap-4 md:items-end flex-wrap">
         <div className="w-full md:flex-1">
@@ -792,15 +889,17 @@ export default function HistoricoOrcamentosPage() {
           </select>
         </div>
 
-        {/* Filtro por Vendedor — somente admin */}
-        {isAdmin && vendedoresUnicos.length > 0 && (
+        {/* Filtro por Vendedor — visível para admin E financeiro */}
+        {(isAdmin || isFinanceiro) && (
           <div className="w-full md:w-44">
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Vendedor</label>
-            <select value={filtroVendedor} onChange={(e) => setFiltroVendedor(e.target.value)} className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium transition-all">
-              <option value="todos">Todos os Vendedores</option>
-              {vendedoresUnicos.map(nome => (
-                <option key={nome} value={nome}>{nome}</option>
-              ))}
+            <select
+              value={filtroVendedor}
+              onChange={e => { setFiltroVendedor(e.target.value); setPagina(0); carregarOrcamentos(0); }}
+              className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium transition-all"
+            >
+              <option value="todos">Todos os vendedores</option>
+              {listaVendedores.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
             </select>
           </div>
         )}

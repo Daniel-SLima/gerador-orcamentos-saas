@@ -5,6 +5,7 @@ export interface Cliente {
   cpf_cnpj: string;
   telefone: string;
   contato_nome: string;
+  email?: string;
   endereco?: string;
   rua_numero?: string;
   bairro?: string;

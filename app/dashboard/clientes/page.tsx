@@ -11,6 +11,7 @@ interface Cliente {
   cpf_cnpj: string;
   contato_nome: string;
   telefone: string;
+  email?: string;
   endereco: string;
   cep?: string;
   uf: string;
@@ -114,6 +115,7 @@ export default function ClientesPage() {
   const [cpfCnpj, setCpfCnpj] = useState("");
   const [contatoNome, setContatoNome] = useState("");
   const [telefone, setTelefone] = useState("");
+  const [emailCliente, setEmailCliente] = useState("");
   
   // 🚀 NOVOS CAMPOS DE ENDEREÇO
   const [cep, setCep] = useState("");
@@ -293,6 +295,7 @@ export default function ClientesPage() {
         cpf_cnpj: cpfCnpj,
         contato_nome: contatoNome,
         telefone: telefone,
+        email: emailCliente.trim() || null,
         cep: cep,
         uf: uf,
         cidade: cidade,
@@ -331,6 +334,7 @@ export default function ClientesPage() {
     setCpfCnpj(cliente.cpf_cnpj || "");
     setContatoNome(cliente.contato_nome || "");
     setTelefone(aplicarMascaraTelefone(cliente.telefone || ""));
+    setEmailCliente(cliente.email || "");
     setCep(cliente.cep || "");
     setUf(cliente.uf || "");
     setCidade(cliente.cidade || "");
@@ -357,6 +361,7 @@ export default function ClientesPage() {
     setCpfCnpj("");
     setContatoNome("");
     setTelefone("");
+    setEmailCliente("");
     setCep("");
     setUf("");
     setCidade("");
@@ -458,6 +463,10 @@ export default function ClientesPage() {
             <input type="text" value={telefone} onChange={(e) => setTelefone(aplicarMascaraTelefone(e.target.value))} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="(00) 00000-0000" />
           </div>
           
+          <div className="md:col-span-6 lg:col-span-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">E-mail</label>
+            <input type="email" value={emailCliente} onChange={(e) => setEmailCliente(e.target.value)} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="contato@empresa.com.br" />
+          </div>
           <div className="md:col-span-12 lg:col-span-3">
             <label className="block text-sm font-medium text-gray-700 mb-1.5">CNPJ / CPF</label>
             <input type="text" value={cpfCnpj} onChange={(e) => setCpfCnpj(e.target.value)} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="00.000.000/0000-00" />
@@ -584,6 +593,7 @@ export default function ClientesPage() {
                   <div className="text-sm text-gray-600 space-y-1">
                     {cliente.contato_nome && <p><span className="font-medium text-gray-500">Contato:</span> {cliente.contato_nome}</p>}
                     {cliente.telefone && <p><span className="font-medium text-gray-500">Tel:</span> {cliente.telefone}</p>}
+                    {cliente.email && <p><span className="font-medium text-gray-500">E-mail:</span> {cliente.email}</p>}
                     {cliente.cpf_cnpj && <p><span className="font-medium text-gray-500">Doc:</span> {cliente.cpf_cnpj}</p>}
                     {cliente.endereco && <p className="truncate"><span className="font-medium text-gray-500">End:</span> {cliente.endereco}</p>}
                   </div>
@@ -598,6 +608,7 @@ export default function ClientesPage() {
                     <th className="p-4 text-sm font-semibold text-gray-600">Cliente</th>
                     <th className="p-4 text-sm font-semibold text-gray-600">Contato</th>
                     <th className="p-4 text-sm font-semibold text-gray-600">Telefone</th>
+                    <th className="p-4 text-sm font-semibold text-gray-600">E-mail</th>
                     <th className="p-4 text-sm font-semibold text-gray-600">CNPJ/CPF</th>
                     <th className="p-4 text-sm font-semibold text-gray-600">Endereço</th>
                     <th className="p-4 text-sm font-semibold text-gray-600 text-center">Ações</th>
@@ -609,6 +620,7 @@ export default function ClientesPage() {
                       <td className="p-4 text-gray-900 font-medium">{cliente.nome_razao_social}</td>
                       <td className="p-4 text-gray-600">{cliente.contato_nome || "-"}</td>
                       <td className="p-4 text-gray-600">{cliente.telefone || "-"}</td>
+                      <td className="p-4 text-gray-600">{cliente.email || "-"}</td>
                       <td className="p-4 text-gray-600">{cliente.cpf_cnpj || "-"}</td>
                       <td className="p-4 text-gray-600 truncate max-w-[250px]" title={cliente.endereco}>{cliente.endereco || "-"}</td>
                       <td className="p-4 text-center relative">
