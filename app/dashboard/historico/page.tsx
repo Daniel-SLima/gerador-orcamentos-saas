@@ -17,6 +17,7 @@ interface Orcamento {
   endereco_obra?: string;
   contato_obra?: string;
   user_id: string;
+  vendedor_id?: string;
   clientes: { nome_razao_social: string } | { nome_razao_social: string }[];
   vendedores?: { nome: string } | { nome: string }[];
 }
@@ -98,16 +99,45 @@ export default function HistoricoOrcamentosPage() {
     if (!loadingPerfil) {
       carregarOrcamentos(0);
 
-      const channel = supabase
-        .channel("historico_status")
-        .on(
-          "postgres_changes",
-          { event: "UPDATE", schema: "public", table: "orcamentos" },
-          () => { carregarOrcamentos(0); }
-        )
-        .subscribe();
+      // Inicializa o canal Realtime com filtro condicional por perfil
+      let channel: ReturnType<typeof supabase.channel> | null = null;
 
-      return () => { supabase.removeChannel(channel); };
+      const iniciarCanal = async () => {
+        const { data: { user: usuarioAtual } } = await supabase.auth.getUser();
+        let filtroCanal = `user_id=eq.${usuarioAtual?.id}`;
+
+        if (!isAdmin && !isFinanceiro && usuarioAtual) {
+          const { data: vendedorAtual } = await supabase
+            .from("vendedores")
+            .select("id")
+            .eq("user_id", usuarioAtual.id)
+            .maybeSingle();
+
+          // Se o usuário é vendedor, escuta por vendedor_id
+          if (vendedorAtual?.id) {
+            filtroCanal = `vendedor_id=eq.${vendedorAtual.id}`;
+          }
+        }
+
+        channel = supabase
+          .channel("historico_status")
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "orcamentos",
+              // Admins e financeiros escutam tudo (sem filtro de linha)
+              ...(isAdmin || isFinanceiro ? {} : { filter: filtroCanal }),
+            },
+            () => { carregarOrcamentos(0); }
+          )
+          .subscribe();
+      };
+
+      iniciarCanal();
+
+      return () => { if (channel) supabase.removeChannel(channel); };
     }
   }, [loadingPerfil]);
 
@@ -286,11 +316,18 @@ export default function HistoricoOrcamentosPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Sessão expirada.");
 
-      const { error } = await supabase
+      let queryUpdate = supabase
         .from("orcamentos")
         .update({ status: novoStatus })
-        .eq("id", id)
-        .eq("user_id", user.id);
+        .eq("id", id);
+
+      // O filtro user_id só se aplica a não-admins.
+      // Admins já têm acesso total garantido pelas políticas RLS do Supabase.
+      if (!isAdmin) {
+        queryUpdate = queryUpdate.eq("user_id", user.id);
+      }
+
+      const { error } = await queryUpdate;
       if (error) throw error;
       setOrcamentos(orcamentos.map(orc => orc.id === id ? { ...orc, status: novoStatus } : orc));
 
@@ -300,10 +337,29 @@ export default function HistoricoOrcamentosPage() {
           const orc = orcamentos.find(o => o.id === id);
           if (orc) {
             const { data: { user } } = await supabase.auth.getUser();
-            if (user && orc.user_id !== user.id) {
+
+            // Resolve o destinatário correto:
+            // Prioriza o user_id do vendedor vinculado (vendedor_id).
+            // Só usa orc.user_id como fallback se não houver vendedor vinculado.
+            let destinatarioId = orc.user_id;
+
+            if (orc.vendedor_id) {
+              const { data: vendedorData } = await supabase
+                .from("vendedores")
+                .select("user_id")
+                .eq("id", orc.vendedor_id)
+                .maybeSingle();
+
+              if (vendedorData?.user_id) {
+                destinatarioId = vendedorData.user_id;
+              }
+            }
+
+            // Só envia se o destinatário não for o próprio admin que fez a ação
+            if (user && destinatarioId !== user.id) {
               const numeroFormatado = String(orc.numero_orcamento).padStart(5, "0");
               await supabase.from("notifications").insert({
-                user_id: orc.user_id,
+                user_id: destinatarioId,
                 tipo: novoStatus === "Aprovado" ? "orcamento_aprovado" : "orcamento_recusado",
                 titulo: novoStatus === "Aprovado"
                   ? `Orçamento #${numeroFormatado} aprovado ✅`
